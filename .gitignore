@@ -65,3 +65,7 @@ best.pt
 data/
 *.yaml
 !configs/*.yaml
+
+# Environment (secrets)
+.env
+!.env.example

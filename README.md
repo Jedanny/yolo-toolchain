@@ -15,11 +15,24 @@ make install-coreml  # CoreML 支持 (macOS)
 ### 数据准备
 
 ```bash
+# AI 自动标注（SiliconFlow Kimi-K2.5）
+# 1. 复制 .env.example 为 .env，填入 API Key 和模型
+cp .env.example .env
+
+# 2. 运行标注（指定 YAML 配置自动加载类别）
+uv run python -m src.tools.auto_annotator --images /path/to/images --output /path/to/output --dataset data.yaml
+
+# 或手动指定类别，设置置信度阈值
+uv run python -m src.tools.auto_annotator --images /path/to/images --output /path/to/output --classes person car dog --conf 0.3
+
+# 单图片标注
+uv run python -m src.tools.auto_annotator --images photo.jpg --output labels.txt --dataset data.yaml --conf 0.5 --single
+
 # VOC → YOLO 格式转换
-uv run python -m src.data.dataset_builder --mode voc --input /path/to/VOC --output /path/to/yolo
+uv run python -m src.tools.dataset_builder --mode voc --input /path/to/VOC --output /path/to/yolo
 
 # 数据增强
-uv run python -m src.data.augmentor --input /path/images --output /path/augmented --num_augment 5
+uv run python -m src.tools.augmentor --input /path/images --output /path/augmented --num_augment 5
 ```
 
 ### 训练模型
@@ -56,9 +69,10 @@ uv run python -m src.export.exporter --model best.pt --format openvino
 ```
 yolo-toolchain/
 ├── src/
-│   ├── data/                   # 数据处理
+│   ├── tools/                  # 数据处理工具
 │   │   ├── dataset_builder.py  # VOC/COCO → YOLO 格式转换
-│   │   └── augmentor.py        # Mosaic、Mixup、HSV 等增强
+│   │   ├── augmentor.py        # Mosaic、Mixup、HSV 等增强
+│   │   └── auto_annotator.py   # Kimi-K2.5 AI 自动标注
 │   ├── train/                  # 训练策略
 │   │   ├── freeze_trainer.py   # 冻结骨干网络微调
 │   │   └── incremental_trainer.py  # 增量学习
@@ -75,22 +89,24 @@ yolo-toolchain/
 ## Makefile 命令
 
 ```bash
-make help              # 显示所有命令
-make sync              # 同步依赖
-make format            # 代码格式化
-make lint              # 代码检查
-make test              # 运行测试
-make clean             # 清理缓存
-make run-freeze-train  # 冻结训练帮助
-make run-export        # 导出帮助
+make help                # 显示所有命令
+make sync                # 同步依赖
+make format              # 代码格式化
+make lint                # 代码检查
+make test                # 运行测试
+make clean               # 清理缓存
+make run-auto-annotate   # AI 自动标注帮助
+make run-freeze-train    # 冻结训练帮助
+make run-export          # 导出帮助
 ```
 
 ## 核心功能
 
 | 模块 | 功能 |
 |------|------|
-| `data/dataset_builder` | VOC/COCO → YOLO 格式转换，数据集统计 |
-| `data/augmentor` | Mosaic、Mixup、HSV、Albumentations 增强 |
+| `tools/auto_annotator` | SiliconFlow Kimi-K2.5 AI 自动标注 |
+| `tools/dataset_builder` | VOC/COCO → YOLO 格式转换，数据集统计 |
+| `tools/augmentor` | Mosaic、Mixup、HSV、Albumentations 增强 |
 | `train/freeze_trainer` | 冻结骨干网络微调（保留预训练知识） |
 | `train/incremental_trainer` | 增量添加新类别 |
 | `eval/diagnostics` | 误报/漏报分析，混淆矩阵，每类别 Precision/Recall |

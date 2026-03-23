@@ -22,7 +22,7 @@ make test                # 运行测试
 # 模块运行方式
 uv run python -m src.train.freeze_trainer --help
 uv run python -m src.train.incremental_trainer --help
-uv run python -m src.data.augmentor --help
+uv run python -m src.tools.augmentor --help
 uv run python -m src.export.exporter --help
 uv run python -m src.eval.diagnostics --help
 ```
@@ -33,9 +33,10 @@ uv run python -m src.eval.diagnostics --help
 
 ```
 src/
-├── data/           # 数据处理
+├── tools/          # 数据处理工具
 │   ├── dataset_builder.py   # VOC/COCO→YOLO 格式转换，数据集分析
-│   └── augmentor.py         # Mosaic、Mixup、HSV 等数据增强
+│   ├── augmentor.py         # Mosaic、Mixup、HSV 等数据增强
+│   └── auto_annotator.py    # SiliconFlow Kimi-K2.5 AI 自动标注
 ├── train/          # 训练策略
 │   ├── freeze_trainer.py    # 冻结骨干网络微调（默认冻0-9层）
 │   └── incremental_trainer.py  # 增量学习添加新类别
@@ -68,8 +69,20 @@ uv run python -m src.train.freeze_trainer --data data.yaml --epochs 100 --freeze
 # 增量训练（添加新类别）
 uv run python -m src.train.incremental_trainer --model best.pt --data new_data.yaml --epochs 50
 
+# AI 自动标注（配置 .env 文件）
+cp .env.example .env  # 填入 SILICONFLOW_API_KEY 和 SILICONFLOW_MODEL
+
+# 使用 YAML 配置加载类别，设置置信度阈值
+uv run python -m src.tools.auto_annotator --images /path/to/images --output /path/to/output --dataset data.yaml --conf 0.3
+
+# 或手动指定类别
+uv run python -m src.tools.auto_annotator --images /path/to/images --output /path/to/output --classes person car dog --conf 0.25
+
+# 单图片标注
+uv run python -m src.tools.auto_annotator --images photo.jpg --output labels/photo.txt --dataset data.yaml --conf 0.5 --single
+
 # 数据格式转换
-uv run python -m src.data.dataset_builder --mode voc --input /path/to/voc --output /path/to/yolo
+uv run python -m src.tools.dataset_builder --mode voc --input /path/to/voc --output /path/to/yolo
 
 # 模型导出
 uv run python -m src.export.exporter --model best.pt --format onnx

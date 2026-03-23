@@ -2,7 +2,7 @@
 
 .PHONY: help install install-dev install-coreml install-wandb install-tensorboard sync lock \
 	format lint test clean \
-	run-freeze-train run-incremental-train run-convert run-augment run-export run-diagnose
+	run-freeze-train run-incremental-train run-convert run-augment run-auto-annotate run-export run-diagnose
 
 help:
 	@echo "YOLO Toolchain - Available commands:"
@@ -26,6 +26,7 @@ help:
 	@echo "    make run-incremental-train  Incremental training"
 	@echo "    make run-convert          Convert dataset format"
 	@echo "    make run-augment         Augment dataset"
+	@echo "    make run-auto-annotate   Auto annotate with AI (SiliconFlow Kimi-K2.5)"
 	@echo "    make run-export           Export model"
 	@echo "    make run-diagnose        Diagnostics analysis"
 	@echo ""
@@ -75,12 +76,16 @@ run-incremental-train:
 	@uv run python -m src.train.incremental_trainer --help
 
 run-convert:
-	@echo "Usage: uv run python -m src.data.dataset_builder --mode voc --input /path --output /path"
-	@uv run python -m src.data.dataset_builder --help
+	@echo "Usage: uv run python -m src.tools.dataset_builder --mode voc --input /path --output /path"
+	@uv run python -m src.tools.dataset_builder --help
 
 run-augment:
-	@echo "Usage: uv run python -m src.data.augmentor --input /path --output /path --num_augment 5"
-	@uv run python -m src.data.augmentor --help
+	@echo "Usage: uv run python -m src.tools.augmentor --input /path --output /path --num_augment 5"
+	@uv run python -m src.tools.augmentor --help
+
+run-auto-annotate:
+	@echo "Usage: uv run python -m src.tools.auto_annotator --images /path --output /path --classes person car dog"
+	@uv run python -m src.tools.auto_annotator --help
 
 run-export:
 	@echo "Usage: uv run python -m src.export.exporter --model best.pt --format onnx"
