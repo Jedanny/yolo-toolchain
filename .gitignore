@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+runs/
+outputs/
+wandb/
+tensorboard/
+*.pt
+*.onnx
+*.engine
+*.torchscript
+*_openvino_model/
+*.mlpackage
+*.tflite
+*_edgetpu.tflite
+*_saved_model/
+*_web_model/
+*_paddle_model/
+*_ncnn_model/
+*.mnn
+
+# YOLO outputs
+yolo11n.pt
+yolo11s.pt
+yolo11m.pt
+yolo11l.pt
+yolo11x.pt
+last.pt
+best.pt
+
+# Data
+data/
+*.yaml
+!configs/*.yaml

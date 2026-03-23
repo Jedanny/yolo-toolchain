@@ -1,0 +1,71 @@
+# 数据增强配置
+
+# 几何变换
+degrees: 0.0         # 随机旋转角度 (-degrees ~ +degrees)
+translate: 0.1        # 图像平移比例 (0.0-1.0)
+scale: 0.5           # 尺度增益因子 (1 +/- scale)
+shear: 0.0           # 剪切角度
+perspective: 0.0     # 透视变换 (0.0-0.001)
+flipud: 0.0          # 上下翻转概率 (0.0-1.0)
+fliplr: 0.5          # 左右翻转概率 (0.0-1.0)
+
+# 颜色变换 (HSV)
+hsv_h: 0.015         # 色调调整 (色轮比例)
+hsv_s: 0.7           # 饱和度调整
+hsv_v: 0.4           # 亮度调整
+
+# Mosaic & Mixup & CutMix (目标检测最重要的增强)
+mosaic: 1.0          # Mosaic增强概率 (1.0=100%启用)
+mixup: 0.3           # Mixup增强概率 (混合两张图像)
+cutmix: 0.0          # CutMix增强概率 (裁剪混合)
+
+# Mosaic关闭策略
+close_mosaic: 10     # 训练最后N轮关闭mosaic
+
+# Albumentations扩展增强
+use_albumentations: true
+
+albumentations_transforms:
+  HorizontalFlip:
+    p: 0.5
+  RandomBrightnessContrast:
+    p: 0.5
+    brightness_limit: 0.2
+    contrast_limit: 0.2
+  ShiftScaleRotate:
+    p: 0.5
+    shift_limit: 0.0625
+    scale_limit: 0.1
+    rotate_limit: 15
+  HueSaturationValue:
+    p: 0.5
+    hue_shift_limit: 20
+    sat_shift_limit: 30
+    val_shift_limit: 20
+  CLAHE:
+    p: 0.3
+    clip_limit: 4.0
+  Blur:
+    p: 0.2
+    blur_limit: 3
+  GaussNoise:
+    p: 0.2
+    var_limit: [10.0, 50.0]
+  MotionBlur:
+    p: 0.1
+    blur_limit: 3
+  MedianBlur:
+    p: 0.1
+    blur_limit: 3
+  RandomRain:
+    p: 0.1
+    slant_lower: -10
+    slant_upper: 10
+    drop_length: 20
+    blur_value: 3
+
+# 类别不平衡增强
+class_imbalance_strategy:
+  enabled: true
+  oversample_minority: true
+  minority_class_ratio: 0.5  # 少数类目标复制比例
