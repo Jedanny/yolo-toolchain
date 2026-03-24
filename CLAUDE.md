@@ -11,20 +11,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # 安装依赖
 make install              # 核心依赖
-make install-dev         # 开发依赖 (pytest, black, isort, flake8)
+make install-dev         # 开发依赖
 make sync                # 同步依赖
 
 # 代码质量
-make format              # 代码格式化 (black + isort)
-make lint                # 代码检查 (flake8)
+make format              # 代码格式化
+make lint                # 代码检查
 make test                # 运行测试
 
-# 模块运行方式
-uv run python -m src.train.freeze_trainer --help
-uv run python -m src.train.incremental_trainer --help
-uv run python -m src.tools.augmentor --help
-uv run python -m src.export.exporter --help
-uv run python -m src.eval.diagnostics --help
+# 脚本入口（安装后直接使用）
+yolo-download --model yolo11n     # 下载模型
+yolo-preprocess --input /path     # 图片预处理
+yolo-convert --mode voc           # 格式转换
+yolo-auto-annotate --images ...   # AI 标注
+yolo-verify --images ...          # 标注核验
+yolo-augment --input ...          # 数据增强
+yolo-train --data data.yaml       # 训练
+yolo-freeze-train --data ...      # 冻结训练
+yolo-incremental-train --model .. # 增量训练
+yolo-diagnose --model ...         # 诊断分析
+yolo-export --model ...           # 模型导出
 ```
 
 ## 架构设计
@@ -34,16 +40,20 @@ uv run python -m src.eval.diagnostics --help
 ```
 src/
 ├── tools/          # 数据处理工具
-│   ├── dataset_builder.py   # VOC/COCO→YOLO 格式转换，数据集分析
-│   ├── augmentor.py         # Mosaic、Mixup、HSV 等数据增强
-│   └── auto_annotator.py    # SiliconFlow Kimi-K2.5 AI 自动标注
+│   ├── dataset_builder.py   # VOC/COCO→YOLO 格式转换
+│   ├── augmentor.py         # Mosaic/Mixup/HSV 增强
+│   ├── auto_annotator.py    # Kimi-K2.5 AI 自动标注（多线程）
+│   ├── verify_annotator.py  # 标注核验
+│   ├── preprocess.py         # 图片预处理
+│   └── downloader.py         # Hugging Face 模型下载
 ├── train/          # 训练策略
-│   ├── freeze_trainer.py    # 冻结骨干网络微调（默认冻0-9层）
-│   └── incremental_trainer.py  # 增量学习添加新类别
+│   ├── trainer.py          # 普通训练（断点续训）
+│   ├── freeze_trainer.py    # 冻结骨干网络（默认冻0-9层）
+│   └── incremental_trainer.py  # 增量学习
 ├── eval/           # 评估诊断
-│   └── diagnostics.py       # 误报/漏报分析，混淆矩阵，每类别 Precision/Recall
+│   └── diagnostics.py       # 误报/漏报分析
 └── export/         # 模型导出
-    └── exporter.py          # ONNX/TensorRT/OpenVINO/CoreML 等多格式导出
+    └── exporter.py          # ONNX/TensorRT/OpenVINO/CoreML 导出
 ```
 
 ### 配置模式
@@ -57,37 +67,35 @@ src/
 
 1. **Dataclass 配置** - 所有配置类继承 `@dataclass`，包含类型注解和默认值
 2. **YOLO 封装** - 内部使用 `ultralytics.YOLO` 类，封装额外逻辑
-3. **CLI 入口点** - 每个模块有 `main()` 函数，通过 `python -m src.<module>.<file>` 调用
-4. **控制台脚本** - pyproject.toml 定义了快捷命令如 `yolo-freeze-train`、`yolo-export`
+3. **CLI 入口点** - 每个模块有 `main()` 函数，通过 `python -m src.<module>` 调用
+4. **控制台脚本** - pyproject.toml 定义了快捷命令如 `yolo-train`、`yolo-export`
 
 ### 训练示例
 
 ```bash
+# 普通训练
+yolo-train --data data.yaml --epochs 100
+
+# 断点续训
+yolo-train --data data.yaml --epochs 100 --resume
+
 # 冻结骨干网络训练
-uv run python -m src.train.freeze_trainer --data data.yaml --epochs 100 --freeze 0 1 2 3 4 5 6 7 8 9
+yolo-freeze-train --data data.yaml --epochs 100
 
-# 增量训练（添加新类别）
-uv run python -m src.train.incremental_trainer --model best.pt --data new_data.yaml --epochs 50
+# 增量训练
+yolo-incremental-train --model best.pt --data new_data.yaml --epochs 50
 
-# AI 自动标注（配置 .env 文件）
-cp .env.example .env  # 填入 SILICONFLOW_API_KEY 和 SILICONFLOW_MODEL
-
-# 使用 YAML 配置加载类别，设置置信度阈值
-uv run python -m src.tools.auto_annotator --images /path/to/images --output /path/to/output --dataset data.yaml --conf 0.3
-
-# 或手动指定类别
-uv run python -m src.tools.auto_annotator --images /path/to/images --output /path/to/output --classes person car dog --conf 0.25
-
-# 单图片标注
-uv run python -m src.tools.auto_annotator --images photo.jpg --output labels/photo.txt --dataset data.yaml --conf 0.5 --single
+# AI 自动标注
+cp .env.example .env  # 填入 SILICONFLOW_API_KEY
+yolo-auto-annotate --images /path/images --output /path/output --dataset data.yaml --conf 0.3
 
 # 数据格式转换
-uv run python -m src.tools.dataset_builder --mode voc --input /path/to/voc --output /path/to/yolo
+yolo-convert --mode voc --input /path/voc --output /path/yolo
+
+# 图片预处理
+yolo-preprocess --input /path/images --resize 640 480 --enhance --denoise
 
 # 模型导出
-uv run python -m src.export.exporter --model best.pt --format onnx
-uv run python -m src.export.exporter --model best.pt --format engine --half
-
-# 诊断分析
-uv run python -m src.eval.diagnostics --model best.pt --data data.yaml --output diagnostics/
+yolo-export --model best.pt --format onnx
+yolo-export --model best.pt --format engine --half
 ```

@@ -404,8 +404,20 @@ def main():
     parser.add_argument('--data', type=str, required=True, help='数据集配置')
     parser.add_argument('--output', type=str, default='diagnostics', help='输出目录')
     parser.add_argument('--conf', type=float, default=0.25, help='置信度阈值')
+    parser.add_argument('--config', type=str, help='配置文件路径')
+    parser.add_argument('--log-level', type=str, default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='日志级别')
 
     args = parser.parse_args()
+
+    import logging as log_module
+    log_level = getattr(log_module, args.log_level.upper(), log_module.INFO)
+    log_module.basicConfig(
+        level=log_level,
+        format='%(asctime)s | %(levelname)-8s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
     diagnostics = DetectionDiagnostics(args.model, args.data, args.output)
     report = diagnostics.run_full_diagnostics(conf_threshold=args.conf)

@@ -300,8 +300,19 @@ def main():
     parser.add_argument('--num_augment', type=int, default=5, help='每张图像生成的增强数量')
     parser.add_argument('--config', type=str, default=None, help='增强配置文件')
     parser.add_argument('--use_albumentations', action='store_true', help='使用Albumentations增强')
+    parser.add_argument('--log-level', type=str, default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='日志级别')
 
     args = parser.parse_args()
+
+    import logging as log_module
+    log_level = getattr(log_module, args.log_level.upper(), log_module.INFO)
+    log_module.basicConfig(
+        level=log_level,
+        format='%(asctime)s | %(levelname)-8s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
     augmentor = YOLOAugmentor()
 

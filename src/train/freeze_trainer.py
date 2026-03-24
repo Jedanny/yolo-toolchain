@@ -228,8 +228,19 @@ def main():
     parser.add_argument('--project', type=str, default='runs/train', help='输出项目目录')
     parser.add_argument('--name', type=str, default='freeze_train', help='实验名称')
     parser.add_argument('--config', type=str, default=None, help='配置文件路径')
+    parser.add_argument('--log-level', type=str, default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='日志级别')
 
     args = parser.parse_args()
+
+    import logging as log_module
+    log_level = getattr(log_module, args.log_level.upper(), log_module.INFO)
+    log_module.basicConfig(
+        level=log_level,
+        format='%(asctime)s | %(levelname)-8s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
     if args.config:
         # 从配置文件加载

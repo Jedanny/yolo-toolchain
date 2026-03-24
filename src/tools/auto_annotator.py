@@ -38,22 +38,24 @@ class AutoAnnotatorConfig:
     api_key: str = ""
     base_url: str = "https://api.siliconflow.cn/v1"
     model: str = "Pro/moonshotai/Kimi-K2.5"
-    max_tokens: int = 4096
+    max_tokens: int = 2048
     temperature: float = 0.1
-    image_size: int = 1024
+    image_size: int = 768
     confidence_threshold: float = 0.25
     max_retries: int = 3
     retry_delay: float = 2.0
+    timeout: int = 300
     batch_size: int = 1
 
 
 class SiliconFlowClient:
     """SiliconFlow API 客户端"""
 
-    def __init__(self, api_key: str, base_url: str = "https://api.siliconflow.cn/v1"):
+    def __init__(self, api_key: str, base_url: str = "https://api.siliconflow.cn/v1", timeout: int = 300):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.endpoint = f"{self.base_url}/chat/completions"
+        self.timeout = timeout
 
     def chat(self, messages: List[Dict], model: str, **kwargs) -> Dict:
         """发送聊天请求"""
@@ -68,7 +70,7 @@ class SiliconFlowClient:
             **kwargs
         }
 
-        response = requests.post(self.endpoint, headers=headers, json=payload, timeout=120)
+        response = requests.post(self.endpoint, headers=headers, json=payload, timeout=self.timeout)
         response.raise_for_status()
         return response.json()
 
@@ -100,7 +102,7 @@ def encode_image_to_data_url(image_path: str, max_size: int = 1024) -> str:
         img = img.resize((new_width, new_height), Image.LANCZOS)
 
     buffer = io.BytesIO()
-    img.convert("RGB").save(buffer, format="JPEG", quality=85)
+    img.convert("RGB").save(buffer, format="JPEG", quality=75)
     img_bytes = buffer.getvalue()
     b64_str = base64.b64encode(img_bytes).decode("utf-8")
 
@@ -123,49 +125,40 @@ def load_classes_from_yaml(yaml_path: str) -> List[str]:
 
 def build_annotation_prompt(classes: List[str] = None, custom_note: str = None) -> str:
     """根据类别构建标注提示词"""
-    base_prompt = """你是一个专业的目标检测标注助手。请分析这张图片，用 YOLO 格式标注所有可见的目标物体。
-
-## 输出格式要求
-严格按照以下 JSON 格式输出，不要添加任何解释：
-```json
-{{
-  "width": 图片宽度像素值,
-  "height": 图片高度像素值,
-  "classes": ["类别1", "类别2", ...],
-  "annotations": [
-    {{"class_id": 0, "bbox": [center_x, center_y, width, height], "confidence": 0.95}},
-    ...
-  ]
-}}
-```
-
-## 标注规则
-1. bbox 坐标为归一化值 (0-1)：center_x, center_y, width, height
-2. class_id 对应 classes 数组的索引
-3. confidence 为置信度 (0-1)，请为每个检测提供准确的置信度分数
-4. 只标注确定的目标，忽略不确定的区域
-5. 标注所有可见的物体，包括重叠和部分遮挡的
-6. 置信度低于 0.25 的目标请忽略，不要返回"""
-
     if classes:
         classes_str = ', '.join(classes)
-        base_prompt += f"""
+        base_prompt = f"""分析图片，用YOLO格式标注。
 
-## 指定类别（必须严格使用）
-可选类别列表：[{classes_str}]
-- 只标注列表中的类别
-- 不要标注不在列表中的物体
-- 如果图中没有列表中的类别，返回空标注"""
+类别列表：[{classes_str}]
+只标注列表中的物体。
+
+JSON格式：
+{{"width":W,"height":H,"classes":["类1","类2"],"annotations":[{{"class_id":0,"bbox":[cx,cy,w,h],"confidence":0.9}}]}}
+
+规则：
+- bbox归一化(0-1)：center_x,center_y,width,height
+- class_id对应classes数组索引
+- confidence为置信度(0-1)
+- 低于0.25置信度的不要返回
+
+直接输出JSON："""
     else:
-        base_prompt += """
+        base_prompt = """分析图片，用YOLO格式标注常见物体。
 
-## 通用类别参考（如未指定类别）
-person, car, truck, bus, motorcycle, bicycle, dog, cat, bird, chair, table, cup, bottle, book, phone, laptop"""
+JSON格式：
+{{"width":W,"height":H,"classes":["类别"],"annotations":[{{"class_id":0,"bbox":[cx,cy,w,h],"confidence":0.9}}]}}
+
+规则：
+- bbox归一化(0-1)
+- class_id对应classes数组索引
+- confidence为置信度(0-1)
+- 低于0.25置信度的不要返回
+
+直接输出JSON："""
 
     if custom_note:
-        base_prompt += f"\n\n## 额外要求\n{custom_note}"
+        base_prompt += f"\n额外要求：{custom_note}"
 
-    base_prompt += "\n\n请直接输出 JSON，不要有其他内容："
     return base_prompt
 
 
@@ -185,7 +178,7 @@ class AutoAnnotator:
         if not api_key:
             raise ValueError("API key is required. Set SILICONFLOW_API_KEY environment variable or provide in config.")
 
-        self.client = SiliconFlowClient(api_key, self.config.base_url)
+        self.client = SiliconFlowClient(api_key, self.config.base_url, self.config.timeout)
         self.class_names = []
 
     def annotate_image(self, image_path: str, classes: List[str] = None, dataset_yaml: str = None) -> Tuple[List, List]:
@@ -223,6 +216,7 @@ class AutoAnnotator:
         last_error = None
 
         while retry_count < self.config.max_retries:
+            api_start = time.time()
             try:
                 response = self.client.chat(
                     messages=messages,
@@ -230,6 +224,7 @@ class AutoAnnotator:
                     max_tokens=self.config.max_tokens,
                     temperature=self.config.temperature
                 )
+                api_time = time.time() - api_start
 
                 content = response["choices"][0]["message"]["content"]
                 result = self._parse_json_response(content)
@@ -237,6 +232,7 @@ class AutoAnnotator:
                 if result and "annotations" in result:
                     self.class_names = result.get("classes", [])
                     annotations = self._filter_by_confidence(result["annotations"])
+                    logger.info(f"API: {api_time:.1f}s, annotations: {len(annotations)}")
                     return annotations, self.class_names
 
                 retry_count += 1
@@ -245,10 +241,12 @@ class AutoAnnotator:
             except requests.exceptions.RequestException as e:
                 retry_count += 1
                 last_error = str(e)
+                logger.warning(f"API call failed ({retry_count}/{self.config.max_retries}): {e}")
                 time.sleep(self.config.retry_delay)
             except (KeyError, IndexError, json.JSONDecodeError) as e:
                 retry_count += 1
                 last_error = f"Parse error: {e}"
+                logger.warning(f"Parse failed ({retry_count}/{self.config.max_retries}): {e}")
                 time.sleep(self.config.retry_delay)
 
         raise RuntimeError(f"Failed to annotate after {self.config.max_retries} retries. Last error: {last_error}")
@@ -307,12 +305,11 @@ class AutoAnnotator:
         results = {}
 
         for i, image_path in enumerate(image_paths):
-            logger.info(f"[{i+1}/{len(image_paths)}] Processing: {image_path}")
             try:
                 annotations, class_names = self.annotate_image(image_path, classes)
                 results[image_path] = (annotations, class_names)
             except Exception as e:
-                logger.error(f"Error processing {image_path}: {e}")
+                logger.error(f"[{i+1}/{len(image_paths)}] Failed: {Path(image_path).name} - {e}")
                 results[image_path] = ([], [])
 
         return results
@@ -346,6 +343,13 @@ class AutoAnnotator:
         with open(output_path, 'w') as f:
             yaml.dump(yaml_content, f, default_flow_style=False, allow_unicode=True)
 
+    def save_predefined_classes(self, output_path: str, class_names: List[str]):
+        """保存 labelImg 所需类别文件"""
+        output_path = Path(output_path)
+        with open(output_path, 'w') as f:
+            for name in class_names:
+                f.write(f"{name}\n")
+
 
 def auto_annotate_dataset(
     image_dir: str,
@@ -354,9 +358,11 @@ def auto_annotate_dataset(
     dataset_yaml: str = None,
     api_key: str = None,
     model: str = "Pro/moonshotai/Kimi-K2.5",
-    train_split: float = 0.8,
-    val_split: float = 0.1,
-    test_split: float = 0.1
+    train_split: float = 0.7,
+    val_split: float = 0.2,
+    test_split: float = 0.1,
+    seed: int = 42,
+    workers: int = 10
 ):
     """自动标注整个数据集
 
@@ -367,10 +373,16 @@ def auto_annotate_dataset(
         dataset_yaml: YOLO 数据集配置文件路径
         api_key: SiliconFlow API Key
         model: 使用的模型
-        train_split: 训练集比例
-        val_split: 验证集比例
-        test_split: 测试集比例
+        train_split: 训练集比例（默认 0.7）
+        val_split: 验证集比例（默认 0.2）
+        test_split: 测试集比例（默认 0.1）
+        seed: 随机种子（默认 42）
+        workers: 并发线程数（默认 10）
     """
+    import time
+    import random
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     image_dir = Path(image_dir)
     output_dir = Path(output_dir)
 
@@ -382,13 +394,15 @@ def auto_annotate_dataset(
     if not image_files:
         raise ValueError(f"No images found in {image_dir}")
 
-    logger.info(f"Found {len(image_files)} images")
+    random.seed(seed)
+    random.shuffle(image_files)
+    logger.info(f"Found {len(image_files)} images, seed={seed}, using {workers} workers")
+    start_time = time.time()
 
     config = AutoAnnotatorConfig(
         api_key=api_key or os.environ.get("SILICONFLOW_API_KEY", ""),
         model=model
     )
-    annotator = AutoAnnotator(config)
 
     train_count = int(len(image_files) * train_split)
     val_count = int(len(image_files) * val_split)
@@ -400,6 +414,10 @@ def auto_annotate_dataset(
     }
 
     all_classes = set()
+    total = len(image_files)
+    success_count = 0
+    fail_count = 0
+    lock_count = __import__('threading').Lock()
 
     for split_name, split_images in splits.items():
         images_out = output_dir / 'images' / split_name
@@ -407,33 +425,64 @@ def auto_annotate_dataset(
         images_out.mkdir(parents=True, exist_ok=True)
         labels_out.mkdir(parents=True, exist_ok=True)
 
-        for img_path in split_images:
-            logger.info(f"[{split_name}] Processing {img_path.name}...")
-
-            try:
-                annotations, class_names = annotator.annotate_image(
-                    str(img_path),
-                    classes=classes,
-                    dataset_yaml=dataset_yaml
-                )
+    def process_image(img_path, split_name):
+        nonlocal success_count, fail_count, all_classes
+        annotator = AutoAnnotator(AutoAnnotatorConfig(
+            api_key=api_key or os.environ.get("SILICONFLOW_API_KEY", ""),
+            model=model
+        ))
+        img_start = time.time()
+        try:
+            annotations, class_names = annotator.annotate_image(
+                str(img_path),
+                classes=classes,
+                dataset_yaml=dataset_yaml
+            )
+            with lock_count:
                 all_classes.update(class_names)
 
-                import shutil
-                shutil.copy(img_path, images_out / img_path.name)
+            import shutil
+            images_out = output_dir / 'images' / split_name
+            labels_out = output_dir / 'labels' / split_name
+            shutil.copy(img_path, images_out / img_path.name)
 
-                label_path = labels_out / f"{img_path.stem}.txt"
-                annotator.save_annotations(annotations, class_names, str(label_path))
-                logger.info(f"  Saved {len(annotations)} annotations to {label_path}")
+            label_path = labels_out / f"{img_path.stem}.txt"
+            annotator.save_annotations(annotations, class_names, str(label_path))
 
-            except Exception as e:
-                logger.error(f"Error processing {img_path.name}: {e}")
-                continue
+            img_time = time.time() - img_start
+            with lock_count:
+                success_count += 1
+                if success_count % 10 == 0 or success_count == total:
+                    logger.info(f"Progress: {success_count}/{total} ({success_count} ok, {fail_count} failed)")
+            return True, img_path, img_time
+        except Exception as e:
+            img_time = time.time() - img_start
+            with lock_count:
+                fail_count += 1
+            logger.warning(f"Failed: {img_path.name} ({img_time:.1f}s) - {e}")
+            return False, img_path, img_time
+
+    for split_name, split_images in splits.items():
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(process_image, img_path, split_name): img_path for img_path in split_images}
+            for future in as_completed(futures):
+                pass
+
+    total_time = time.time() - start_time
+    avg_time = total_time / total if total > 0 else 0
 
     final_classes = list(all_classes) if classes is None else classes
+    annotator = AutoAnnotator(AutoAnnotatorConfig(
+        api_key=api_key or os.environ.get("SILICONFLOW_API_KEY", ""),
+        model=model
+    ))
     dataset_yaml_path = output_dir / 'dataset.yaml'
     annotator.create_dataset_yaml(str(dataset_yaml_path), final_classes)
-    logger.info(f"Dataset created at: {output_dir}")
-    logger.info(f"Classes: {final_classes}")
+    labels_classes_path = output_dir / 'labels' / 'train' / 'classes.txt'
+    labels_classes_path.parent.mkdir(parents=True, exist_ok=True)
+    annotator.save_predefined_classes(str(labels_classes_path), final_classes)
+    logger.info(f"classes.txt saved to {labels_classes_path}")
+    logger.info(f"Done! {success_count}/{total} annotated, total: {total_time:.1f}s, avg: {avg_time:.1f}s/img, output: {output_dir}")
 
 
 def main():
@@ -445,8 +494,12 @@ def main():
     parser.add_argument('--api_key', type=str, default=None, help='SiliconFlow API Key（默认从 .env 读取）')
     parser.add_argument('--model', type=str, default=None, help='模型名称（默认从 .env 读取）')
     parser.add_argument('--conf', type=float, default=0.25, help='置信度阈值（默认 0.25）')
+    parser.add_argument('--timeout', type=int, default=300, help='API 超时秒数（默认 300）')
     parser.add_argument('--config', type=str, help='配置文件路径')
     parser.add_argument('--single', action='store_true', help='单图片模式')
+    parser.add_argument('--workers', type=int, default=10, help='并发线程数（默认 10）')
+    parser.add_argument('--seed', type=int, default=42, help='随机种子（默认 42）')
+    parser.add_argument('--labelimg', action='store_true', help='标注完成后用 labelImg 预览')
     parser.add_argument('--log-level', type=str, default='INFO',
                         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='日志级别（默认 INFO）')
@@ -467,29 +520,30 @@ def main():
     if not api_key:
         raise ValueError("API key required. Set SILICONFLOW_API_KEY in .env or use --api_key")
 
-    logger.info(f"Starting auto annotation with model: {model}, confidence threshold: {args.conf}")
+    logger.info(f"Starting auto annotation with model: {model}, confidence: {args.conf}, timeout: {args.timeout}s")
 
     if args.config:
-        config = AutoAnnotatorConfig(api_key=api_key, model=model, confidence_threshold=args.conf)
+        config = AutoAnnotatorConfig(api_key=api_key, model=model, confidence_threshold=args.conf, timeout=args.timeout)
         annotator = AutoAnnotator(args.config)
     else:
-        config = AutoAnnotatorConfig(api_key=api_key, model=model, confidence_threshold=args.conf)
+        config = AutoAnnotatorConfig(api_key=api_key, model=model, confidence_threshold=args.conf, timeout=args.timeout)
         annotator = AutoAnnotator(config)
 
     if args.single:
+        import time
         img_path = args.images
+        start_time = time.time()
         logger.info(f"Annotating: {img_path}")
         annotations, class_names = annotator.annotate_image(
             img_path,
             classes=args.classes,
             dataset_yaml=args.dataset
         )
-        logger.info(f"Found {len(annotations)} objects")
-        logger.info(f"Classes: {class_names}")
+        elapsed = time.time() - start_time
+        logger.info(f"Done! {len(annotations)} objects, {elapsed:.1f}s total")
 
         output_path = Path(args.output)
         annotator.save_annotations(annotations, class_names, str(output_path))
-        logger.info(f"Saved to: {output_path}")
     else:
         auto_annotate_dataset(
             image_dir=args.images,
@@ -497,8 +551,37 @@ def main():
             classes=args.classes,
             dataset_yaml=args.dataset,
             api_key=api_key,
-            model=model
+            model=model,
+            workers=args.workers,
+            seed=args.seed
         )
+
+        if args.labelimg:
+            output_path = Path(args.output)
+            images_dir = output_path / 'images' / 'train'
+            labels_dir = output_path / 'labels' / 'train'
+            classes_file = labels_dir / 'classes.txt'
+
+            if not images_dir.exists():
+                logger.warning(f"images/train dir not found: {images_dir}")
+            elif not classes_file.exists():
+                logger.warning(f"classes.txt not found: {classes_file}")
+            else:
+                import subprocess
+                logger.info(f"Launching labelImg for preview...")
+                logger.info(f"Images: {images_dir}")
+                logger.info(f"Labels: {labels_dir}")
+                try:
+                    subprocess.Popen([
+                        'labelImg',
+                        str(images_dir),
+                        str(classes_file)
+                    ])
+                    logger.info("labelImg launched. Close it to continue.")
+                except FileNotFoundError:
+                    logger.error("labelImg not found. Install with: pip install labelImg")
+                except Exception as e:
+                    logger.error(f"Failed to launch labelImg: {e}")
 
 
 if __name__ == '__main__':

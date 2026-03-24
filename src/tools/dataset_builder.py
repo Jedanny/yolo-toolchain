@@ -290,8 +290,19 @@ def main():
                         help='数据集划分 (train/val/test)')
     parser.add_argument('--images_dir', type=str, default=None,
                         help='图像目录 (COCO模式需要)')
+    parser.add_argument('--log-level', type=str, default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='日志级别')
 
     args = parser.parse_args()
+
+    import logging as log_module
+    log_level = getattr(log_module, args.log_level.upper(), log_module.INFO)
+    log_module.basicConfig(
+        level=log_level,
+        format='%(asctime)s | %(levelname)-8s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
     builder = DatasetBuilder(args.output)
 

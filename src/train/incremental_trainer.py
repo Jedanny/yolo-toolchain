@@ -276,25 +276,39 @@ def main():
     parser.add_argument('--mixup', type=float, default=0.3, help='Mixup增强概率')
     parser.add_argument('--project', type=str, default='runs/train', help='输出项目目录')
     parser.add_argument('--name', type=str, default='incremental_train', help='实验名称')
+    parser.add_argument('--config', type=str, help='配置文件路径')
+    parser.add_argument('--log-level', type=str, default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='日志级别')
 
     args = parser.parse_args()
 
-    config = IncrementalTrainConfig(
-        model=args.model,
-        data=args.data,
-        epochs=args.epochs,
-        imgsz=args.imgsz,
-        batch=args.batch,
-        device=args.device,
-        lr0=args.lr0,
-        freeze_backbone=not args.no_freeze,
-        mosaic=args.mosaic,
-        mixup=args.mixup,
-        project=args.project,
-        name=args.name,
+    import logging as log_module
+    log_level = getattr(log_module, args.log_level.upper(), log_module.INFO)
+    log_module.basicConfig(
+        level=log_level,
+        format='%(asctime)s | %(levelname)-8s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    trainer = IncrementalTrainer(config)
+    if args.config:
+        trainer = IncrementalTrainer(args.config)
+    else:
+        config = IncrementalTrainConfig(
+            model=args.model,
+            data=args.data,
+            epochs=args.epochs,
+            imgsz=args.imgsz,
+            batch=args.batch,
+            device=args.device,
+            lr0=args.lr0,
+            freeze_backbone=not args.no_freeze,
+            mosaic=args.mosaic,
+            mixup=args.mixup,
+            project=args.project,
+            name=args.name,
+        )
+        trainer = IncrementalTrainer(config)
 
     # 分析原始模型类别
     trainer.analyze_model_classes(args.model)

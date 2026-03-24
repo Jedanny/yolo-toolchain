@@ -2,7 +2,7 @@
 
 .PHONY: help install install-dev install-coreml install-wandb install-tensorboard sync lock \
 	format lint test clean \
-	run-freeze-train run-incremental-train run-convert run-augment run-auto-annotate run-export run-diagnose
+	run-train run-freeze-train run-incremental-train run-convert run-augment run-auto-annotate run-verify run-preprocess run-export run-diagnose run-download
 
 help:
 	@echo "YOLO Toolchain - Available commands:"
@@ -22,11 +22,14 @@ help:
 	@echo "    make test             Run tests (pytest)"
 	@echo ""
 	@echo "  Run commands:"
+	@echo "    make run-train           Normal training"
 	@echo "    make run-freeze-train    Freeze backbone training"
 	@echo "    make run-incremental-train  Incremental training"
 	@echo "    make run-convert          Convert dataset format"
 	@echo "    make run-augment         Augment dataset"
 	@echo "    make run-auto-annotate   Auto annotate with AI (SiliconFlow Kimi-K2.5)"
+	@echo "    make run-verify          Verify and edit annotations"
+	@echo "    make run-preprocess      Batch image preprocessing"
 	@echo "    make run-export           Export model"
 	@echo "    make run-diagnose        Diagnostics analysis"
 	@echo ""
@@ -67,6 +70,10 @@ test:
 	uv run pytest tests/ -v
 
 # Run commands
+run-train:
+	@echo "Usage: uv run python -m src.train.trainer --data data.yaml --epochs 100 --resume"
+	@uv run python -m src.train.trainer --help
+
 run-freeze-train:
 	@echo "Usage: uv run python -m src.train.freeze_trainer --data data.yaml --epochs 100"
 	@uv run python -m src.train.freeze_trainer --help
@@ -87,6 +94,14 @@ run-auto-annotate:
 	@echo "Usage: uv run python -m src.tools.auto_annotator --images /path --output /path --classes person car dog"
 	@uv run python -m src.tools.auto_annotator --help
 
+run-verify:
+	@echo "Usage: uv run python -m src.tools.verify_annotator --images /path --labels /path --classes person cigarette"
+	@uv run python -m src.tools.verify_annotator --help
+
+run-preprocess:
+	@echo "Usage: uv run python -m src.tools.preprocess --input /path --resize 640 480 --enhance"
+	@uv run python -m src.tools.preprocess --help
+
 run-export:
 	@echo "Usage: uv run python -m src.export.exporter --model best.pt --format onnx"
 	@uv run python -m src.export.exporter --help
@@ -94,6 +109,10 @@ run-export:
 run-diagnose:
 	@echo "Usage: uv run python -m src.eval.diagnostics --model best.pt --data data.yaml"
 	@uv run python -m src.eval.diagnostics --help
+
+run-download:
+	@echo "Usage: uv run python -m src.tools.downloader --model yolo11n --output models"
+	@uv run python -m src.tools.downloader --help
 
 # Cleanup
 clean:

@@ -250,8 +250,20 @@ def main():
     parser.add_argument('--workspace', type=float, default=4.0, help='TensorRT工作空间')
     parser.add_argument('--batch', type=int, default=1, help='批处理大小')
     parser.add_argument('--device', type=str, default='0', help='设备')
+    parser.add_argument('--config', type=str, help='配置文件路径')
+    parser.add_argument('--log-level', type=str, default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='日志级别')
 
     args = parser.parse_args()
+
+    import logging as log_module
+    log_level = getattr(log_module, args.log_level.upper(), log_module.INFO)
+    log_module.basicConfig(
+        level=log_level,
+        format='%(asctime)s | %(levelname)-8s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
     exporter = ModelExporter(args.model)
 
