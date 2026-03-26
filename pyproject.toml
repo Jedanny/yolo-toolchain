@@ -68,6 +68,7 @@ yolo-export = "src.export.exporter:main"
 yolo-anchors = "src.tools.anchor_generator:main"
 yolo-tune = "src.tools.hyperparameter_tuner:main"
 yolo-label-qc = "src.tools.label_qc:main"
+yolo-pipeline = "src.tools.pipeline:main"
 
 [build-system]
 requires = ["hatchling"]
