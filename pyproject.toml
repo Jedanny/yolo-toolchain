@@ -66,6 +66,7 @@ yolo-incremental-train = "src.train.incremental_trainer:main"
 yolo-diagnose = "src.eval.diagnostics:main"
 yolo-export = "src.export.exporter:main"
 yolo-anchors = "src.tools.anchor_generator:main"
+yolo-tune = "src.tools.hyperparameter_tuner:main"
 
 [build-system]
 requires = ["hatchling"]
