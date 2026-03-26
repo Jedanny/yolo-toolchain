@@ -65,6 +65,7 @@ yolo-freeze-train = "src.train.freeze_trainer:main"
 yolo-incremental-train = "src.train.incremental_trainer:main"
 yolo-diagnose = "src.eval.diagnostics:main"
 yolo-export = "src.export.exporter:main"
+yolo-anchors = "src.tools.anchor_generator:main"
 
 [build-system]
 requires = ["hatchling"]
