@@ -1662,6 +1662,35 @@ def tool_tta_inference(params: Dict[str, Any]) -> Dict[str, Any]:
     return inference.run()
 
 
+@register_tool("hard-example-mining")
+def tool_hard_example_mining(params: Dict[str, Any]) -> Dict[str, Any]:
+    """难例挖掘"""
+    from .hard_example_miner import HardExampleMiner, HardExampleMiningConfig
+
+    model = params.get("model")
+    data = params.get("data")
+
+    if not model:
+        raise ValueError("Parameter 'model' is required for hard-example-mining")
+    if not data:
+        raise ValueError("Parameter 'data' is required for hard-example-mining")
+
+    config = HardExampleMiningConfig(
+        model=model,
+        data=data,
+        output=params.get("output", "./hard_examples"),
+        strategy=params.get("strategy", "oversample"),
+        iou_threshold=params.get("iou_threshold", 0.5),
+        conf_threshold=params.get("conf_threshold", 0.25),
+        small_area_threshold=params.get("small_area_threshold", 0.01),
+        max_oversample=params.get("max_oversample", 5),
+        device=str(params.get("device", "cpu")),
+    )
+
+    miner = HardExampleMiner(config)
+    return miner.mine()
+
+
 # =============================================================================
 # CLI Entry Point
 # =============================================================================
