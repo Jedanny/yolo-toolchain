@@ -18,7 +18,7 @@ logger = logging.getLogger("yolo_toolchain.tta_inference")
 
 def _to_python_scalar(val) -> float:
     """将 numpy 标量转换为 Python 标量"""
-    if hasattr(val, 'item'):
+    if hasattr(val, "item"):
         return float(val.item())
     return float(val)
 
@@ -27,7 +27,7 @@ def wbf_fusion(
     boxes_list: List[List[np.ndarray]],
     scores_list: List[List[np.ndarray]],
     labels_list: List[List[np.ndarray]],
-    iou_threshold: float = 0.5
+    iou_threshold: float = 0.5,
 ) -> tuple:
     """
     Weighted Boxes Fusion - 加权框融合
@@ -133,6 +133,7 @@ def compute_iou_xyxy(box1: np.ndarray, box2: np.ndarray) -> float:
 @dataclass
 class TTAConfig:
     """TTA 推理配置"""
+
     model: str
     images: str
     output_dir: str = "./tta_results"
@@ -167,7 +168,7 @@ class TTAInference:
             return [images_path]
         elif images_path.is_dir():
             files = []
-            for ext in ['*.jpg', '*.jpeg', '*.png', '*.bmp']:
+            for ext in ["*.jpg", "*.jpeg", "*.png", "*.bmp"]:
                 files.extend(images_path.glob(ext))
                 files.extend(images_path.glob(ext.upper()))
             return sorted(set(files))
@@ -284,20 +285,30 @@ class TTAInference:
             # 保存结果
             if self.config.save_vis:
                 self._save_annotated_image(
-                    img, fused_boxes, fused_scores, fused_labels, output_path / "images" / img_path.name
+                    img,
+                    fused_boxes,
+                    fused_scores,
+                    fused_labels,
+                    output_path / "images" / img_path.name,
                 )
 
             if self.config.save_txt:
                 self._save_labels(
-                    img_path.stem, orig_w, orig_h,
-                    fused_boxes, fused_scores, fused_labels,
-                    output_path / "labels" / f"{img_path.stem}.txt"
+                    img_path.stem,
+                    orig_w,
+                    orig_h,
+                    fused_boxes,
+                    fused_scores,
+                    fused_labels,
+                    output_path / "labels" / f"{img_path.stem}.txt",
                 )
 
-            results_list.append({
-                "image": str(img_path),
-                "detections": len(fused_boxes),
-            })
+            results_list.append(
+                {
+                    "image": str(img_path),
+                    "detections": len(fused_boxes),
+                }
+            )
 
         # 保存报告
         report = {
@@ -309,10 +320,10 @@ class TTAInference:
                 "scales": self.config.scales,
                 "flip": self.config.flip,
                 "wbf_iou": self.config.wbf_iou,
-            }
+            },
         }
 
-        with open(output_path / "tta_report.json", 'w') as f:
+        with open(output_path / "tta_report.json", "w") as f:
             json.dump(report, f, indent=2)
 
         return report
@@ -320,8 +331,11 @@ class TTAInference:
     def _save_annotated_image(self, img, boxes, scores, labels, output_path):
         """保存标注图片"""
         import random
-        colors = {i: (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
-                  for i in range(100)}
+
+        colors = {
+            i: (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
+            for i in range(100)
+        }
 
         for box, score, label in zip(boxes, scores, labels):
             x1, y1, x2, y2 = map(int, box)
@@ -334,7 +348,7 @@ class TTAInference:
 
     def _save_labels(self, stem, orig_w, orig_h, boxes, scores, labels, output_path):
         """保存 YOLO 格式标签"""
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             for box, score, label in zip(boxes, scores, labels):
                 x1, y1, x2, y2 = box
                 cx = ((x1 + x2) / 2) / orig_w
@@ -348,37 +362,30 @@ class TTAInference:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='YOLO TTA 推理工具 - 测试时增强'
-    )
-    parser.add_argument('--model', type=str, required=True, help='模型路径')
-    parser.add_argument('--images', type=str, required=True, help='图片目录或文件')
-    parser.add_argument('--output', type=str, default='./tta_results', help='输出目录')
-    parser.add_argument('--scales', type=str, default='0.8 1.0 1.2',
-                        help='尺度列表 (空格分隔)')
-    parser.add_argument('--flip', action='store_true', default=True,
-                        help='启用水平翻转')
-    parser.add_argument('--no-flip', action='store_true',
-                        help='禁用水平翻转')
-    parser.add_argument('--conf', type=float, default=0.25, help='置信度阈值')
-    parser.add_argument('--iou', type=float, default=0.7, help='NMS IoU 阈值')
-    parser.add_argument('--wbf-iou', type=float, default=0.5, help='WBF 融合 IoU 阈值')
-    parser.add_argument('--device', type=str, default='cpu', help='推理设备')
-    parser.add_argument('--save-txt', action='store_true', default=False,
-                        help='保存检测结果为 TXT')
-    parser.add_argument('--save-conf', action='store_true', default=True,
-                        help='TXT 中包含置信度')
-    parser.add_argument('--save-vis', action='store_true', default=True,
-                        help='保存标注可视化图片')
+    parser = argparse.ArgumentParser(description="YOLO TTA 推理工具 - 测试时增强")
+    parser.add_argument("--model", type=str, required=True, help="模型路径")
+    parser.add_argument("--images", type=str, required=True, help="图片目录或文件")
+    parser.add_argument("--output", type=str, default="./tta_results", help="输出目录")
+    parser.add_argument("--scales", type=str, default="0.8 1.0 1.2", help="尺度列表 (空格分隔)")
+    parser.add_argument("--flip", action="store_true", default=True, help="启用水平翻转")
+    parser.add_argument("--no-flip", action="store_true", help="禁用水平翻转")
+    parser.add_argument("--conf", type=float, default=0.25, help="置信度阈值")
+    parser.add_argument("--iou", type=float, default=0.7, help="NMS IoU 阈值")
+    parser.add_argument("--wbf-iou", type=float, default=0.5, help="WBF 融合 IoU 阈值")
+    parser.add_argument("--device", type=str, default="cpu", help="推理设备")
+    parser.add_argument("--save-txt", action="store_true", default=False, help="保存检测结果为 TXT")
+    parser.add_argument("--save-conf", action="store_true", default=True, help="TXT 中包含置信度")
+    parser.add_argument("--save-vis", action="store_true", default=True, help="保存标注可视化图片")
 
     args = parser.parse_args()
 
     # 配置日志
     import logging as log_module
+
     log_module.basicConfig(
         level=log_module.INFO,
-        format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # 解析 scales

@@ -17,11 +17,12 @@ logger = logging.getLogger("yolo_toolchain.best_model_selector")
 @dataclass
 class BestModelSelectorConfig:
     """最佳模型选择配置"""
-    model: str                          # 模型目录或 .pt 文件路径
-    data: str                           # 数据集 YAML
-    metric: str = "fitness"            # 选择指标
-    output: Optional[str] = None       # 输出路径（Pipeline params 用 output）
-    device: str = "0"                  # 评估设备
+
+    model: str  # 模型目录或 .pt 文件路径
+    data: str  # 数据集 YAML
+    metric: str = "fitness"  # 选择指标
+    output: Optional[str] = None  # 输出路径（Pipeline params 用 output）
+    device: str = "0"  # 评估设备
 
 
 class BestModelSelector:
@@ -109,7 +110,7 @@ class BestModelSelector:
 
         # 按指标选择
         selected_model = None
-        selected_value = float('-inf')
+        selected_value = float("-inf")
 
         for name, result in results.items():
             if result["selected_metric"] > selected_value:
@@ -129,7 +130,7 @@ class BestModelSelector:
         if self.config.output:
             output_path = Path(self.config.output)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 f.write(output["selected_path"])
             logger.info(f"已写入选定模型路径到: {output_path}")
 
@@ -138,28 +139,31 @@ class BestModelSelector:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='YOLO 最佳模型选择工具 - 自动对比 best.pt 和 last.pt'
+        description="YOLO 最佳模型选择工具 - 自动对比 best.pt 和 last.pt"
     )
-    parser.add_argument('--model', type=str, required=True,
-                        help='模型目录（含 weights/ 文件夹）或直接指定 .pt 文件')
-    parser.add_argument('--data', type=str, required=True,
-                        help='数据集 YAML 配置文件')
-    parser.add_argument('--metric', type=str, default='fitness',
-                        choices=['mAP50', 'mAP50-95', 'recall', 'precision', 'fitness'],
-                        help='选择指标 (默认: fitness)')
-    parser.add_argument('--output', type=str, default=None,
-                        help='输出路径（写入选定模型路径）')
-    parser.add_argument('--device', type=str, default='0',
-                        help='评估设备 (默认: 0)')
+    parser.add_argument(
+        "--model", type=str, required=True, help="模型目录（含 weights/ 文件夹）或直接指定 .pt 文件"
+    )
+    parser.add_argument("--data", type=str, required=True, help="数据集 YAML 配置文件")
+    parser.add_argument(
+        "--metric",
+        type=str,
+        default="fitness",
+        choices=["mAP50", "mAP50-95", "recall", "precision", "fitness"],
+        help="选择指标 (默认: fitness)",
+    )
+    parser.add_argument("--output", type=str, default=None, help="输出路径（写入选定模型路径）")
+    parser.add_argument("--device", type=str, default="0", help="评估设备 (默认: 0)")
 
     args = parser.parse_args()
 
     # 配置日志
     import logging as log_module
+
     log_module.basicConfig(
         level=log_module.INFO,
-        format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     config = BestModelSelectorConfig(
