@@ -74,6 +74,7 @@ yolo-verify-inference = "src.tools.pipeline:verify_inference_main"
 yolo-error-analyze = "src.eval.error_analyzer:main"
 yolo-prune = "src.train.pruner:main"
 yolo-best-model = "src.tools.best_model_selector:main"
+yolo-tta = "src.tools.tta_inference:main"
 
 [build-system]
 requires = ["hatchling"]
