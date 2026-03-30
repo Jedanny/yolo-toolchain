@@ -1127,6 +1127,9 @@ uv run python -m src.tools.hard_example_miner --help
 # 3. 验证 Pipeline 工具注册
 uv run python -m src.tools.pipeline --list-tools
 
-# 4. 格式化代码
+# 4. 验证 CLI 入口
+uv run python -m src.tools.hard_example_miner --help
+
+# 5. 格式化代码
 black src/tools/hard_example_miner.py
 ```
