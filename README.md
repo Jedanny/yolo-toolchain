@@ -33,6 +33,9 @@ make install-dev    # 开发依赖（含格式化、lint、测试）
 | `yolo-prune` | 模型剪枝 | 模型压缩加速 |
 | `yolo-error-analyze` | 错误分析 | 错误分类诊断 |
 | `yolo-diagnose` | 诊断分析 | 全面评估模型 |
+| `yolo-best-model` | 最佳模型选择 | 对比 best.pt 和 last.pt |
+| `yolo-tta` | TTA 推理 | 测试时增强提升精度 |
+| `yolo-hard-example-mining` | 难例挖掘 | 自动识别 FP/FN/小目标 |
 | `yolo-export` | 模型导出 | 部署前转换格式 |
 | `yolo-pipeline` | 全流程串联 | 自动化完整流程 |
 
@@ -461,6 +464,77 @@ yolo-diagnose --model best.pt --data data.yaml --output diagnostics/
 - `confusion_matrix.png`
 - `class_performance.png`
 
+### 4.5 最佳模型选择
+
+对比 best.pt 和 last.pt，按指定指标选择最佳模型：
+
+```bash
+yolo-best-model --model ./runs/train/exp/weights --data data.yaml --metric fitness
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--model` | 模型目录或 .pt 文件 | 必填 |
+| `--data` | 数据集 YAML | 必填 |
+| `--metric` | 选择指标 | fitness |
+| `--output` | 输出路径 | - |
+
+**支持指标**：mAP50, mAP50-95, recall, precision, fitness
+
+### 4.6 TTA 推理
+
+测试时增强（Test Time Augmentation），通过多尺度 + 翻转推理提升精度：
+
+```bash
+yolo-tta --model best.pt --images ./test --output tta_results/
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--model` | 模型路径 | 必填 |
+| `--images` | 图片目录或文件 | 必填 |
+| `--output` | 输出目录 | ./tta_results |
+| `--scales` | 尺度列表 | 0.8 1.0 1.2 |
+| `--flip` | 启用水平翻转 | True |
+| `--conf` | 置信度阈值 | 0.25 |
+| `--iou` | NMS IoU 阈值 | 0.7 |
+| `--wbf-iou` | WBF 融合 IoU | 0.5 |
+
+**输出**：
+- `tta_report.json` - 推理报告
+- `images/` - 标注可视化图片
+- `labels/` - YOLO 格式检测结果
+
+### 4.7 难例挖掘自动重训
+
+自动识别 FP（误检）、FN（漏检）、小目标难例，通过动态过采样和增强生成新数据集重训：
+
+```bash
+yolo-hard-example-mining --model best.pt --data data.yaml --output ./hard_examples
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--model` | 模型路径 | 必填 |
+| `--data` | 数据集 YAML | 必填 |
+| `--output` | 输出目录 | ./hard_examples |
+| `--strategy` | 策略 | oversample |
+| `--iou-threshold` | IoU 阈值 | 0.5 |
+| `--conf-threshold` | 置信度阈值 | 0.25 |
+| `--small-area-threshold` | 小目标面积阈值 | 0.01 |
+| `--max-oversample` | 最大过采样倍数 | 5 |
+
+**三种策略**：
+- `oversample`：复制难例图片 + 增强，生成新数据集（效果最好）
+- `weighted`：不生成新图片，训练时通过 class_weights 加权
+- `filter`：只输出难例列表，用于人工审核
+
+**输出**：
+- `fp/`、`fn/`、`small/` - 分类难例
+- `merged/` - 合并后的训练集
+- `mining_report.json` - 难例分析报告
+- `retrain_config.yaml` - 重训配置
+
 ---
 
 ## 5. 模型导出
@@ -712,7 +786,10 @@ src/
 │   ├── verify_annotator.py    # 标注核验
 │   ├── preprocess.py           # 预处理
 │   ├── augmentor.py            # 数据增强
-│   └── downloader.py            # 模型下载
+│   ├── downloader.py           # 模型下载
+│   ├── best_model_selector.py  # 最佳模型选择
+│   ├── tta_inference.py        # TTA 推理
+│   └── hard_example_miner.py   # 难例挖掘
 ├── train/                     # 训练策略
 │   ├── trainer.py              # 普通训练
 │   ├── freeze_trainer.py       # 冻结训练

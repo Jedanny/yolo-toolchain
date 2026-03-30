@@ -21,7 +21,7 @@ make test          # pytest tests/
 # 运行单个测试
 uv run pytest tests/tools/test_pipeline.py::test_name -v
 
-# 20 个 CLI 命令（安装后直接使用）
+# 22 个 CLI 命令（安装后直接使用）
 yolo-download          # 下载预训练模型
 yolo-preprocess        # 图片预处理
 yolo-convert           # VOC/COCO → YOLO
@@ -40,6 +40,9 @@ yolo-pr-analyze        # PR/F1 曲线分析（最优阈值）
 yolo-prune             # 模型剪枝（压缩）
 yolo-error-analyze     # 错误分析（FP/FN分类）
 yolo-diagnose          # 诊断分析
+yolo-best-model        # 最佳模型选择（对比 best.pt 和 last.pt）
+yolo-tta              # TTA 测试时增强推理
+yolo-hard-example-mining # 难例挖掘自动重训
 yolo-export            # 模型导出
 yolo-pipeline          # 全流程串联
 
@@ -84,6 +87,9 @@ Pipeline 使用 `ToolRegistry` 单例模式注册工具函数，通过 `@registe
 | error-analyze | `--data` | `data` |
 | verify-inference | `--data` | `data` |
 | train | `--data` | `data` |
+| best-model-select | `--model`, `--data` | `model`, `data` |
+| tta-inference | `--model`, `--images` | `model`, `images` |
+| hard-example-mining | `--model`, `--data` | `model`, `data` |
 
 **全局参数合并**：`global_params` 作为默认值，会与各 stage 的 `params` 合并（stage params 优先）。
 
