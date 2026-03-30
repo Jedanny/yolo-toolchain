@@ -46,6 +46,25 @@ def get_oversample_ratio(hardness_score: float, max_oversample: int = 5) -> int:
         return min(5, max_oversample)
 
 
+def get_variant_count(hardness_score: float, max_variants: int = 5) -> int:
+    """
+    根据难例分数计算变体数量
+
+    0.5以下: 0个新变体 (只用原图)
+    0.5-0.7: 2个变体
+    0.7-0.9: 3个变体
+    >0.9: 4个变体
+    """
+    if hardness_score < 0.5:
+        return 0
+    elif hardness_score < 0.7:
+        return 2
+    elif hardness_score < 0.9:
+        return 3
+    else:
+        return min(4, max_variants)
+
+
 def compute_iou_xyxy(box1: List[float], box2: List[float]) -> float:
     """计算两个框的 IoU [x1, y1, x2, y2]"""
     x1_min, y1_min, x1_max, y1_max = box1

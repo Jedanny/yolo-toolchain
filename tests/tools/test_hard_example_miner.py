@@ -41,6 +41,15 @@ def test_oversample_ratio():
     assert get_oversample_ratio(1.0) == 5  # 不超过 max_oversample
 
 
+def test_get_variant_count():
+    from src.tools.hard_example_miner import get_variant_count
+
+    assert get_variant_count(0.3) == 0  # < 0.5, 0个新变体
+    assert get_variant_count(0.6) == 2  # 0.5-0.7
+    assert get_variant_count(0.8) == 3  # 0.7-0.9
+    assert get_variant_count(0.95) == 4  # >0.9
+
+
 def test_compute_iou_xyxy():
     from src.tools.hard_example_miner import compute_iou_xyxy
     import numpy as np
