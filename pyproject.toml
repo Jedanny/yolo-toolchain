@@ -67,8 +67,13 @@ yolo-diagnose = "src.eval.diagnostics:main"
 yolo-export = "src.export.exporter:main"
 yolo-anchors = "src.tools.anchor_generator:main"
 yolo-tune = "src.tools.hyperparameter_tuner:main"
+yolo-pr-analyze = "src.eval.pr_curve_analyzer:main"
 yolo-label-qc = "src.tools.label_qc:main"
 yolo-pipeline = "src.tools.pipeline:main"
+yolo-verify-inference = "src.tools.pipeline:verify_inference_main"
+yolo-error-analyze = "src.eval.error_analyzer:main"
+yolo-prune = "src.train.pruner:main"
+yolo-best-model = "src.tools.best_model_selector:main"
 
 [build-system]
 requires = ["hatchling"]
