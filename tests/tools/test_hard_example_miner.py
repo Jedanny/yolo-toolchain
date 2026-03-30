@@ -39,3 +39,47 @@ def test_oversample_ratio():
     assert get_oversample_ratio(0.75) == 3  # 0.7 - 0.9 → 3x
     assert get_oversample_ratio(0.95) == 5  # > 0.9 → 5x
     assert get_oversample_ratio(1.0) == 5  # 不超过 max_oversample
+
+
+def test_compute_iou_xyxy():
+    from src.tools.hard_example_miner import compute_iou_xyxy
+    import numpy as np
+
+    # 完全不重叠
+    box1 = [0, 0, 10, 10]
+    box2 = [20, 20, 30, 30]
+    assert compute_iou_xyxy(box1, box2) == pytest.approx(0.0)
+
+    # 完全重叠
+    box1 = [0, 0, 10, 10]
+    box2 = [0, 0, 10, 10]
+    assert compute_iou_xyxy(box1, box2) == pytest.approx(1.0)
+
+    # 部分重叠
+    box1 = [0, 0, 10, 10]
+    box2 = [5, 5, 15, 15]
+    iou = compute_iou_xyxy(box1, box2)
+    assert 0.1 < iou < 0.3  # 约 0.14
+
+
+def test_classify_errors():
+    from src.tools.hard_example_miner import classify_errors
+
+    # 模拟预测和真值
+    predictions = [
+        {"image": "img1.jpg", "boxes": [[0, 0, 10, 10, 0.9, 0]]},  # 正确检测
+        {"image": "img2.jpg", "boxes": [[100, 100, 110, 110, 0.8, 0]]},  # FP
+    ]
+    ground_truths = {
+        "img1.jpg": [[0, 0, 10, 10, 0]],  # 匹配
+        "img2.jpg": [],  # 无真值
+    }
+    image_paths = {"img1.jpg": "/path/img1.jpg", "img2.jpg": "/path/img2.jpg"}
+
+    fp_cases, fn_cases, correct = classify_errors(
+        predictions, ground_truths, image_paths,
+        iou_threshold=0.5, conf_threshold=0.25
+    )
+
+    assert len(fp_cases) == 1
+    assert fp_cases[0]["image"] == "img2.jpg"
