@@ -103,16 +103,16 @@ def classify_errors(
     image_paths: Dict[str, str],
     iou_threshold: float = 0.5,
     conf_threshold: float = 0.25
-) -> Tuple[List[Dict], List[Dict], List[Dict]]:
+) -> Tuple[List[HardExample], List[HardExample], List[HardExample]]:
     """
     分类错误类型
 
     Returns:
         (fp_cases, fn_cases, correct_cases)
     """
-    fp_cases = []
-    fn_cases = []
-    correct_cases = []
+    fp_cases: List[HardExample] = []
+    fn_cases: List[HardExample] = []
+    correct_cases: List[HardExample] = []
 
     for pred in predictions:
         image_name = pred["image"]
@@ -151,25 +151,23 @@ def classify_errors(
 
             if best_iou >= iou_threshold:
                 matched_gt.add(best_gt_idx)
-                correct_cases.append({
-                    "image": image_name,
-                    "image_path": image_paths.get(image_name, image_name),
-                    "error_type": "correct",
-                    "box": pred_xyxy,
-                    "score": 0.0,
-                    "confidence": pred_conf
-                })
+                correct_cases.append(HardExample(
+                    image_path=image_paths.get(image_name, image_name),
+                    error_type="correct",
+                    box=pred_xyxy,
+                    score=0.0,
+                    confidence=pred_conf
+                ))
             else:
                 # FP
                 score = compute_hardness_score("FP", 0.0, pred_conf)
-                fp_cases.append({
-                    "image": image_name,
-                    "image_path": image_paths.get(image_name, image_name),
-                    "error_type": "FP",
-                    "box": pred_xyxy,
-                    "score": score,
-                    "confidence": pred_conf
-                })
+                fp_cases.append(HardExample(
+                    image_path=image_paths.get(image_name, image_name),
+                    error_type="FP",
+                    box=pred_xyxy,
+                    score=score,
+                    confidence=pred_conf
+                ))
 
         # 找出 FN
         for gt_idx, gt_box in enumerate(gt_boxes):
@@ -177,14 +175,13 @@ def classify_errors(
                 continue
             gt_xyxy = gt_box[:4]
             score = compute_hardness_score("FN", 0.0, 0.0)
-            fn_cases.append({
-                "image": image_name,
-                "image_path": image_paths.get(image_name, image_name),
-                "error_type": "FN",
-                "box": gt_xyxy,
-                "score": score,
-                "confidence": 0.0
-            })
+            fn_cases.append(HardExample(
+                image_path=image_paths.get(image_name, image_name),
+                error_type="FN",
+                box=gt_xyxy,
+                score=score,
+                confidence=0.0
+            ))
 
     return fp_cases, fn_cases, correct_cases
 
@@ -415,7 +412,7 @@ class HardExampleMiner:
         image_paths = {}
 
         image_files = []
-        for ext in ['*.jpg', '*.jpeg', 'png']:
+        for ext in ['*.jpg', '*.jpeg', '*.png']:
             image_files.extend(list(images_dir.glob(ext)))
             image_files.extend(list(images_dir.glob(ext.upper())))
 

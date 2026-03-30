@@ -104,7 +104,7 @@ def test_classify_errors():
     )
 
     assert len(fp_cases) == 1
-    assert fp_cases[0]["image"] == "img2.jpg"
+    assert "img2.jpg" in fp_cases[0].image_path
 
 
 def test_augment_image():
