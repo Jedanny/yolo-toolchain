@@ -398,6 +398,7 @@ def augment_image(
     image_path: str,
     error_type: str,
     output_dir: str,
+    variant_count: int = 2,
     blur_threshold: float = 100.0
 ) -> List[str]:
     """
@@ -407,10 +408,11 @@ def augment_image(
         image_path: 原图路径
         error_type: 错误类型 "FP"/"FN"/"small"
         output_dir: 输出目录
+        variant_count: 生成的变体数量上限
         blur_threshold: 模糊阈值
 
     Returns:
-        增强后的图片路径列表
+        增强后的图片路径列表（最多 variant_count 个）
     """
     import cv2
     import numpy as np
@@ -427,19 +429,28 @@ def augment_image(
     variants = []
 
     if error_type == "FP":
-        # FP: 模糊 + 亮度
-        variants.extend(_apply_blur(img, image_path, output_path, stem, blur_threshold))
-        variants.extend(_apply_brightness(img, image_path, output_path, stem))
+        # FP: 模糊 + 亮度 + 噪声
+        all_variants = []
+        all_variants.extend(_apply_blur(img, image_path, output_path, stem, blur_threshold))
+        all_variants.extend(_apply_brightness(img, image_path, output_path, stem))
+        all_variants.extend(_apply_noise(img, image_path, output_path, stem))
+        variants = all_variants[:variant_count]  # 限制数量
 
     elif error_type == "FN":
-        # FN: 尺度 + 亮度
-        variants.extend(_apply_scale(img, image_path, output_path, stem))
-        variants.extend(_apply_brightness(img, image_path, output_path, stem))
+        # FN: 尺度 + 亮度 + 噪声
+        all_variants = []
+        all_variants.extend(_apply_scale(img, image_path, output_path, stem))
+        all_variants.extend(_apply_brightness(img, image_path, output_path, stem))
+        all_variants.extend(_apply_noise(img, image_path, output_path, stem))
+        variants = all_variants[:variant_count]
 
     elif error_type == "small":
-        # 小目标: 放大 + 模糊
-        variants.extend(_apply_scale_up(img, image_path, output_path, stem))
-        variants.extend(_apply_blur(img, image_path, output_path, stem, blur_threshold))
+        # 小目标: 放大 + 模糊 + 噪声
+        all_variants = []
+        all_variants.extend(_apply_scale_up(img, image_path, output_path, stem))
+        all_variants.extend(_apply_blur(img, image_path, output_path, stem, blur_threshold))
+        all_variants.extend(_apply_noise(img, image_path, output_path, stem))
+        variants = all_variants[:variant_count]
 
     return variants
 
@@ -473,6 +484,18 @@ def _apply_brightness(img, original_path, output_path, stem):
         cv2.imwrite(str(output_file), brightened)
         variants.append(str(output_file))
     return variants
+
+
+def _apply_noise(img, original_path, output_path, stem, noise_var=10):
+    """应用噪声增强"""
+    import cv2
+    import numpy as np
+
+    noise = np.random.normal(0, noise_var, img.shape).astype(np.float32)
+    noisy = np.clip(img.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+    output_file = output_path / f"{stem}_aug_noise.jpg"
+    cv2.imwrite(str(output_file), noisy)
+    return [str(output_file)]
 
 
 def _apply_scale(img, original_path, output_path, stem):
@@ -787,38 +810,45 @@ class HardExampleMiner:
 
     def _oversample_and_merge(self) -> str:
         """过采样并合并数据集"""
+        import shutil
+
         output_dir = Path(self.config.output)
-        fp_dir = output_dir / "fp" / "images"
-        fn_dir = output_dir / "fn" / "images"
-        small_dir = output_dir / "small" / "images"
-        merged_dir = output_dir / "merged" / "images"
+        merged_images_dir = output_dir / "merged" / "images"
+        merged_labels_dir = output_dir / "merged" / "labels"
 
         # 创建目录
-        for d in [fp_dir, fn_dir, small_dir, merged_dir]:
+        for d in [merged_images_dir, merged_labels_dir]:
             d.mkdir(parents=True, exist_ok=True)
 
         all_hard_examples = self.fp_cases + self.fn_cases + self.small_cases
         variant_stats = {"fp": 0, "fn": 0, "small": 0}
 
         for case in all_hard_examples:
-            # 复制原图
-            import shutil
-            src = case.image_path
-            dst = merged_dir / Path(src).name
-            shutil.copy(src, dst)
+            src_img = case.image_path
+            src_stem = Path(src_img).stem
+            src_label = Path(src_img).parent.parent / "labels" / f"{src_stem}.txt"
 
-            # 生成增强
+            # 复制原图和标签
+            dst_img = merged_images_dir / Path(src_img).name
+            shutil.copy(src_img, dst_img)
+            if src_label.exists():
+                dst_label = merged_labels_dir / f"{src_stem}.txt"
+                shutil.copy(src_label, dst_label)
+
+            # 生成增强（variant_count 控制变体数量）
             error_type = case.error_type
             variant_count = get_variant_count(case.score)
 
-            target_dir = fp_dir if error_type == "FP" else fn_dir if error_type == "FN" else small_dir
-
-            for i in range(variant_count):
-                variants = augment_image(src, error_type, str(target_dir))
+            if variant_count > 0:
+                # 增强图片和标签（标签与原图相同）
+                variants = augment_image(src_img, error_type, str(merged_images_dir), variant_count)
                 for v in variants:
+                    v_stem = Path(v).stem
                     variant_stats[error_type] += 1
-                    # 复制到 merged
-                    shutil.copy(v, merged_dir / Path(v).name)
+                    # 复制标签
+                    if src_label.exists():
+                        dst_label = merged_labels_dir / f"{v_stem}.txt"
+                        shutil.copy(src_label, dst_label)
 
         # 生成 merged 数据集 YAML
         merged_yaml = output_dir / "merged" / "dataset_merged.yaml"
