@@ -167,3 +167,137 @@ def classify_errors(
             })
 
     return fp_cases, fn_cases, correct_cases
+
+
+def augment_image(
+    image_path: str,
+    error_type: str,
+    output_dir: str,
+    variant_count: int = 2,
+    blur_threshold: float = 100.0
+) -> List[str]:
+    """
+    对难例图片进行增强
+
+    Args:
+        image_path: 原图路径
+        error_type: 错误类型 "FP"/"FN"/"small"
+        output_dir: 输出目录
+        variant_count: 生成的变体数量上限
+        blur_threshold: 模糊阈值
+
+    Returns:
+        增强后的图片路径列表（最多 variant_count 个）
+    """
+    import cv2
+    import numpy as np
+    from pathlib import Path
+
+    img = cv2.imread(image_path)
+    if img is None:
+        return []
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    stem = Path(image_path).stem
+    variants = []
+
+    if error_type == "FP":
+        # FP: 模糊 + 亮度 + 噪声
+        all_variants = []
+        all_variants.extend(_apply_blur(img, image_path, output_path, stem, blur_threshold))
+        all_variants.extend(_apply_brightness(img, image_path, output_path, stem))
+        all_variants.extend(_apply_noise(img, image_path, output_path, stem))
+        variants = all_variants[:variant_count]  # 限制数量
+
+    elif error_type == "FN":
+        # FN: 尺度 + 亮度 + 噪声
+        all_variants = []
+        all_variants.extend(_apply_scale(img, image_path, output_path, stem))
+        all_variants.extend(_apply_brightness(img, image_path, output_path, stem))
+        all_variants.extend(_apply_noise(img, image_path, output_path, stem))
+        variants = all_variants[:variant_count]
+
+    elif error_type == "small":
+        # 小目标: 放大 + 模糊 + 噪声
+        all_variants = []
+        all_variants.extend(_apply_scale_up(img, image_path, output_path, stem))
+        all_variants.extend(_apply_blur(img, image_path, output_path, stem, blur_threshold))
+        all_variants.extend(_apply_noise(img, image_path, output_path, stem))
+        variants = all_variants[:variant_count]
+
+    return variants
+
+
+def _apply_blur(img, original_path, output_path, stem, threshold=100.0):
+    """应用模糊增强"""
+    import cv2
+    import numpy as np
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+
+    # 只有当图片模糊时才增强
+    if laplacian_var < threshold:
+        blurred = cv2.GaussianBlur(img, (5, 5), 2)
+        output_file = output_path / f"{stem}_aug_blur.jpg"
+        cv2.imwrite(str(output_file), blurred)
+        return [str(output_file)]
+    return []
+
+
+def _apply_brightness(img, original_path, output_path, stem):
+    """应用亮度增强"""
+    import cv2
+    import numpy as np
+
+    variants = []
+    for alpha in [0.7, 1.3]:  # 变暗/变亮
+        brightened = cv2.convertScaleAbs(img, alpha=alpha, beta=0)
+        output_file = output_path / f"{stem}_aug_bright_{int(alpha*10)}.jpg"
+        cv2.imwrite(str(output_file), brightened)
+        variants.append(str(output_file))
+    return variants
+
+
+def _apply_noise(img, original_path, output_path, stem, noise_var=10):
+    """应用噪声增强"""
+    import cv2
+    import numpy as np
+
+    noise = np.random.normal(0, noise_var, img.shape).astype(np.float32)
+    noisy = np.clip(img.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+    output_file = output_path / f"{stem}_aug_noise.jpg"
+    cv2.imwrite(str(output_file), noisy)
+    return [str(output_file)]
+
+
+def _apply_scale(img, original_path, output_path, stem):
+    """应用尺度变换"""
+    import cv2
+
+    variants = []
+    for scale in [0.8, 1.2]:
+        h, w = img.shape[:2]
+        new_h, new_w = int(h * scale), int(w * scale)
+        scaled = cv2.resize(img, (new_w, new_h))
+        output_file = output_path / f"{stem}_aug_scale_{int(scale*10)}.jpg"
+        cv2.imwrite(str(output_file), scaled)
+        variants.append(str(output_file))
+    return variants
+
+
+def _apply_scale_up(img, original_path, output_path, stem):
+    """应用放大 (小目标优先放大)"""
+    import cv2
+
+    variants = []
+    for scale in [1.2, 1.5]:
+        h, w = img.shape[:2]
+        new_h, new_w = int(h * scale), int(w * scale)
+        scaled = cv2.resize(img, (new_w, new_h))
+        output_file = output_path / f"{stem}_aug_scaleup_{int(scale*10)}.jpg"
+        cv2.imwrite(str(output_file), scaled)
+        variants.append(str(output_file))
+    return variants

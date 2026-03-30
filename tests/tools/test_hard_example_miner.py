@@ -83,3 +83,23 @@ def test_classify_errors():
 
     assert len(fp_cases) == 1
     assert fp_cases[0]["image"] == "img2.jpg"
+
+
+def test_augment_image():
+    import tempfile
+    import os
+    from src.tools.hard_example_miner import augment_image
+    import cv2
+    import numpy as np
+
+    # 创建临时图片
+    with tempfile.TemporaryDirectory() as tmpdir:
+        img_path = os.path.join(tmpdir, "test.jpg")
+        # 先创建测试图片
+        test_img = np.zeros((100, 100, 3), dtype=np.uint8)
+        cv2.imwrite(img_path, test_img)
+
+        # 验证增强函数
+        variants = augment_image(img_path, "FP", output_dir=tmpdir)
+        assert len(variants) >= 1
+        assert all(os.path.exists(v) for v in variants)
