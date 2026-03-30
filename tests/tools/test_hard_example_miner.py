@@ -1,5 +1,5 @@
 import pytest
-from src.tools.hard_example_miner import HardExampleMiningConfig
+from src.tools.hard_example_miner import HardExampleMiningConfig, HardExampleMiner
 
 
 def test_config_defaults():
@@ -13,6 +13,19 @@ def test_config_defaults():
     assert config.conf_threshold == 0.25
     assert config.small_area_threshold == 0.01
     assert config.max_oversample == 5
+
+
+def test_hard_example_miner_init():
+    config = HardExampleMiningConfig(
+        model="best.pt",
+        data="dataset.yaml",
+        output="./test_output"
+    )
+    miner = HardExampleMiner(config)
+    assert miner.config == config
+    assert miner.fp_cases == []
+    assert miner.fn_cases == []
+    assert miner.small_cases == []
 
 
 def test_hardness_score():

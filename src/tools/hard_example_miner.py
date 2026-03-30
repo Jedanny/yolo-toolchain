@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Tuple
+from pathlib import Path
+from typing import List, Optional, Dict, Tuple, Any
 
 
 @dataclass
@@ -320,3 +321,392 @@ def _apply_scale_up(img, original_path, output_path, stem):
         cv2.imwrite(str(output_file), scaled)
         variants.append(str(output_file))
     return variants
+
+
+# HardExampleMiner 类完整实现
+class HardExampleMiner:
+    """难例挖掘器"""
+
+    def __init__(self, config: HardExampleMiningConfig):
+        self.config = config
+        self.fp_cases: List[HardExample] = []
+        self.fn_cases: List[HardExample] = []
+        self.small_cases: List[HardExample] = []
+        self.model = None
+
+    def mine(self) -> Dict[str, Any]:
+        """执行难例挖掘"""
+        # 1. 加载模型和数据集
+        self._load_model()
+        images_dir, labels_dir = self._load_dataset()
+
+        # 2. 推理验证集，收集 FP/FN/小目标
+        predictions, ground_truths, image_paths = self._collect_predictions_and_gt(
+            images_dir, labels_dir
+        )
+
+        # 3. 分类错误
+        fp_cases, fn_cases, _ = classify_errors(
+            predictions, ground_truths, image_paths,
+            iou_threshold=self.config.iou_threshold,
+            conf_threshold=self.config.conf_threshold
+        )
+        self.fp_cases = fp_cases
+        self.fn_cases = fn_cases
+
+        # 4. 识别小目标（从预测和真值中）
+        self._identify_small_objects(predictions, ground_truths, image_paths)
+
+        # 5. 应用增强策略
+        if self.config.strategy == "oversample":
+            merged_yaml = self._oversample_and_merge()
+        elif self.config.strategy == "weighted":
+            merged_yaml = self._generate_weighted_config()
+        else:  # filter
+            merged_yaml = self._generate_filter_list()
+
+        # 6. 生成报告
+        report = self._generate_report()
+
+        return {
+            "fp_count": len(self.fp_cases),
+            "fn_count": len(self.fn_cases),
+            "small_count": len(self.small_cases),
+            "merged_dataset_yaml": merged_yaml,
+            "report": report,
+        }
+
+    def _load_model(self):
+        """加载模型"""
+        from ultralytics import YOLO
+        self.model = YOLO(self.config.model)
+
+    def _load_dataset(self) -> Tuple[Path, Path]:
+        """加载数据集路径"""
+        import yaml
+        with open(self.config.data, 'r') as f:
+            data_config = yaml.safe_load(f)
+
+        dataset_path = Path(data_config.get('path', Path(self.config.data).parent))
+        val_path = dataset_path / data_config.get('val', 'images/val')
+        test_path = dataset_path / data_config.get('test', 'images/test')
+
+        if test_path.exists():
+            images_dir = test_path
+        elif val_path.exists():
+            images_dir = val_path
+        else:
+            raise ValueError(f"Could not find validation or test images. Tried: {test_path} and {val_path}")
+
+        labels_dir = images_dir.parent / 'labels' / images_dir.name
+        if not labels_dir.exists():
+            labels_dir = dataset_path / 'labels' / 'val'
+
+        if not labels_dir.exists():
+            raise ValueError(f"Could not find labels directory. Tried: {labels_dir}")
+
+        return images_dir, labels_dir
+
+    def _collect_predictions_and_gt(self, images_dir, labels_dir):
+        """收集预测和真值"""
+        import cv2
+        predictions = []
+        ground_truths = {}
+        image_paths = {}
+
+        image_files = []
+        for ext in ['*.jpg', '*.jpeg', 'png']:
+            image_files.extend(list(images_dir.glob(ext)))
+            image_files.extend(list(images_dir.glob(ext.upper())))
+
+        for img_path in image_files:
+            image_name = img_path.name
+            image_paths[image_name] = str(img_path)
+
+            # 加载真值
+            label_path = labels_dir / f"{img_path.stem}.txt"
+            gt_boxes = []
+            if label_path.exists():
+                img = cv2.imread(str(img_path))
+                if img is not None:
+                    h, w = img.shape[:2]
+                    with open(label_path, 'r') as f:
+                        for line in f:
+                            parts = line.strip().split()
+                            if len(parts) >= 5:
+                                cls = int(parts[0])
+                                cx, cy, bw, bh = map(float, parts[1:5])
+                                x1 = (cx - bw/2) * w
+                                y1 = (cy - bh/2) * h
+                                x2 = (cx + bw/2) * w
+                                y2 = (cy + bh/2) * h
+                                gt_boxes.append([x1, y1, x2, y2, cls])
+            ground_truths[image_name] = gt_boxes
+
+            # 推理
+            results = self.model.predict(
+                source=str(img_path),
+                conf=self.config.conf_threshold,
+                verbose=False
+            )
+
+            pred_boxes = []
+            if len(results) > 0 and results[0].boxes is not None:
+                for box in results[0].boxes:
+                    xyxy = box.xyxy[0].cpu().numpy()
+                    conf = float(box.conf[0])
+                    cls = int(box.cls[0])
+                    pred_boxes.append([*xyxy, conf, cls])
+
+            predictions.append({"image": image_name, "boxes": pred_boxes})
+
+        return predictions, ground_truths, image_paths
+
+    def _identify_small_objects(self, predictions, ground_truths, image_paths):
+        """识别小目标（从预测和真值中）"""
+        import cv2
+        self.small_cases = []
+        seen_images = set()
+
+        def process_boxes(boxes, img_path, h, w, img_area, source):
+            """处理一组框，识别小目标"""
+            for box in boxes:
+                x1, y1, x2, y2 = box[:4]
+                box_area = (x2 - x1) * (y2 - y1)
+                area_ratio = box_area / img_area if img_area > 0 else 0
+
+                if area_ratio < self.config.small_area_threshold:
+                    confidence = box[4] if len(box) > 4 else 0.0
+                    score = compute_hardness_score("small", 0.0, confidence)
+                    self.small_cases.append(HardExample(
+                        image_path=img_path,
+                        error_type="small",
+                        box=[x1, y1, x2, y2],
+                        score=score,
+                        confidence=confidence
+                    ))
+
+        for image_name in set(list(ground_truths.keys()) + [p["image"] for p in predictions]):
+            if image_name in seen_images:
+                continue
+            seen_images.add(image_name)
+
+            img_path = image_paths.get(image_name)
+            if not img_path:
+                continue
+            img = cv2.imread(img_path)
+            if img is None:
+                continue
+            h, w = img.shape[:2]
+            img_area = h * w
+
+            # 处理真值
+            if image_name in ground_truths:
+                process_boxes(ground_truths[image_name], img_path, h, w, img_area, "gt")
+
+            # 处理预测
+            for pred in predictions:
+                if pred["image"] == image_name:
+                    process_boxes(pred.get("boxes", []), img_path, h, w, img_area, "pred")
+
+    def _oversample_and_merge(self) -> str:
+        """过采样并合并数据集"""
+        import shutil
+
+        output_dir = Path(self.config.output)
+        merged_images_dir = output_dir / "merged" / "images"
+        merged_labels_dir = output_dir / "merged" / "labels"
+
+        # 创建目录
+        for d in [merged_images_dir, merged_labels_dir]:
+            d.mkdir(parents=True, exist_ok=True)
+
+        all_hard_examples = self.fp_cases + self.fn_cases + self.small_cases
+        variant_stats = {"fp": 0, "fn": 0, "small": 0}
+
+        for case in all_hard_examples:
+            src_img = case.image_path
+            src_stem = Path(src_img).stem
+            src_label = Path(src_img).parent.parent / "labels" / f"{src_stem}.txt"
+
+            # 复制原图和标签
+            dst_img = merged_images_dir / Path(src_img).name
+            shutil.copy(src_img, dst_img)
+            if src_label.exists():
+                dst_label = merged_labels_dir / f"{src_stem}.txt"
+                shutil.copy(src_label, dst_label)
+
+            # 生成增强（variant_count 控制变体数量）
+            error_type = case.error_type
+            variant_count = get_variant_count(case.score)
+
+            if variant_count > 0:
+                # 增强图片和标签（标签与原图相同）
+                variants = augment_image(src_img, error_type, str(merged_images_dir), variant_count)
+                for v in variants:
+                    v_stem = Path(v).stem
+                    variant_stats[error_type] += 1
+                    # 复制标签
+                    if src_label.exists():
+                        dst_label = merged_labels_dir / f"{v_stem}.txt"
+                        shutil.copy(src_label, dst_label)
+
+        # 生成 merged 数据集 YAML
+        merged_yaml = output_dir / "merged" / "dataset_merged.yaml"
+        self._generate_merged_yaml(merged_yaml, len(all_hard_examples))
+
+        return str(merged_yaml)
+
+    def _generate_merged_yaml(self, output_path, total_hard_examples):
+        """生成合并后的数据集 YAML"""
+        import yaml
+
+        # 读取原始数据集配置
+        with open(self.config.data, 'r') as f:
+            data_config = yaml.safe_load(f)
+
+        merged_path = Path(self.config.output) / "merged"
+        data_config['path'] = str(merged_path.resolve())
+        data_config['train'] = 'images'
+        data_config['val'] = 'images'
+
+        with open(output_path, 'w') as f:
+            yaml.dump(data_config, f, default_flow_style=False)
+
+    def _generate_weighted_config(self) -> str:
+        """生成重训配置 (weighted 策略)"""
+        import yaml
+
+        output_dir = Path(self.config.output)
+        config_path = output_dir / "retrain_config.yaml"
+
+        # 按类别统计难例数量，生成 class_weights
+        class_weights = {}
+        for case in self.fp_cases + self.fn_cases + self.small_cases:
+            cls = int(case.box[4]) if len(case.box) > 4 else 0
+            if cls not in class_weights:
+                class_weights[cls] = 0
+            class_weights[cls] += 1
+
+        # 转换为权重
+        max_count = max(class_weights.values()) if class_weights else 1
+        weights = [max_count / class_weights.get(i, 1) for i in range(len(class_weights))]
+
+        # 生成 retrain_config.yaml（按 spec 格式）
+        config = {
+            "model": self.config.model,
+            "data": self.config.data,  # 原始数据集
+            "epochs": 50,  # 默认重训轮数
+            "imgsz": 640,
+            "hard_example_mining": {
+                "strategy": "weighted",
+                "class_weights": weights,
+                "original_images": len(self.fp_cases) + len(self.fn_cases) + len(self.small_cases),
+            }
+        }
+
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+
+        return str(config_path)
+
+    def _generate_filter_list(self) -> str:
+        """生成难例列表 (filter 策略) - 用于人工审核"""
+        import json
+
+        output_dir = Path(self.config.output)
+        list_path = output_dir / "hard_examples_list.json"
+
+        hard_examples = []
+        for case in self.fp_cases + self.fn_cases + self.small_cases:
+            hard_examples.append({
+                "image_path": case.image_path,
+                "error_type": case.error_type,
+                "box": case.box,
+                "score": case.score,
+                "confidence": case.confidence,
+            })
+
+        result = {
+            "strategy": "filter",
+            "total_count": len(hard_examples),
+            "fp_count": len(self.fp_cases),
+            "fn_count": len(self.fn_cases),
+            "small_count": len(self.small_cases),
+            "hard_examples": hard_examples,
+        }
+
+        with open(list_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+
+        return str(list_path)
+
+    def _generate_report(self) -> Dict[str, Any]:
+        """生成难例分析报告"""
+        fp_scores = [c.score for c in self.fp_cases] if self.fp_cases else [0]
+        fn_scores = [c.score for c in self.fn_cases] if self.fn_cases else [0]
+        small_scores = [c.score for c in self.small_cases] if self.small_cases else [0]
+
+        return {
+            "fp": {
+                "count": len(self.fp_cases),
+                "avg_score": sum(fp_scores) / len(fp_scores) if fp_scores else 0
+            },
+            "fn": {
+                "count": len(self.fn_cases),
+                "avg_score": sum(fn_scores) / len(fn_scores) if fn_scores else 0
+            },
+            "small": {
+                "count": len(self.small_cases),
+                "avg_score": sum(small_scores) / len(small_scores) if small_scores else 0
+            }
+        }
+
+
+def main():
+    """CLI 入口"""
+    import argparse
+    import logging as log_module
+
+    parser = argparse.ArgumentParser(description='YOLO 难例挖掘工具')
+    parser.add_argument('--model', type=str, required=True, help='模型路径')
+    parser.add_argument('--data', type=str, required=True, help='数据集 YAML')
+    parser.add_argument('--output', type=str, default='./hard_examples', help='输出目录')
+    parser.add_argument('--strategy', type=str, default='oversample',
+                        choices=['oversample', 'weighted', 'filter'], help='策略')
+    parser.add_argument('--iou-threshold', type=float, default=0.5, help='IoU 阈值')
+    parser.add_argument('--conf-threshold', type=float, default=0.25, help='置信度阈值')
+    parser.add_argument('--small-area-threshold', type=float, default=0.01, help='小目标面积阈值')
+    parser.add_argument('--max-oversample', type=int, default=5, help='最大过采样倍数')
+    parser.add_argument('--device', type=str, default='cpu', help='设备')
+
+    args = parser.parse_args()
+
+    log_module.basicConfig(
+        level=log_module.INFO,
+        format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
+    )
+
+    config = HardExampleMiningConfig(
+        model=args.model,
+        data=args.data,
+        output=args.output,
+        strategy=args.strategy,
+        iou_threshold=args.iou_threshold,
+        conf_threshold=args.conf_threshold,
+        small_area_threshold=args.small_area_threshold,
+        max_oversample=args.max_oversample,
+        device=args.device,
+    )
+
+    miner = HardExampleMiner(config)
+    result = miner.mine()
+
+    print("\n" + "=" * 60)
+    print("难例挖掘完成")
+    print("=" * 60)
+    print(f"FP (误检): {result['fp_count']}")
+    print(f"FN (漏检): {result['fn_count']}")
+    print(f"小目标: {result['small_count']}")
+    print(f"合并数据集: {result['merged_dataset_yaml']}")
+    print("=" * 60)
