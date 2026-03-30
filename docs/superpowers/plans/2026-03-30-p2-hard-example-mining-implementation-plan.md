@@ -664,7 +664,9 @@ class HardExampleMiner:
         elif self.config.strategy == "weighted":
             merged_yaml = self._generate_weighted_config()
         else:  # filter
-            merged_yaml = None
+            merged_yaml = self._generate_filter_list()
+
+        # 6. 生成报告
 
         # 6. 生成报告
         report = self._generate_report()
@@ -873,9 +875,11 @@ class HardExampleMiner:
             yaml.dump(data_config, f, default_flow_style=False)
 
     def _generate_weighted_config(self) -> str:
-        """生成加权配置 (weighted 策略)"""
+        """生成重训配置 (weighted 策略)"""
+        import yaml
+
         output_dir = Path(self.config.output)
-        config_path = output_dir / "weighted_config.yaml"
+        config_path = output_dir / "retrain_config.yaml"
 
         # 按类别统计难例数量，生成 class_weights
         class_weights = {}
@@ -889,17 +893,54 @@ class HardExampleMiner:
         max_count = max(class_weights.values()) if class_weights else 1
         weights = [max_count / class_weights.get(i, 1) for i in range(len(class_weights))]
 
+        # 生成 retrain_config.yaml（按 spec 格式）
         config = {
+            "model": self.config.model,
+            "data": self.config.data,  # 原始数据集
+            "epochs": 50,  # 默认重训轮数
+            "imgsz": 640,
             "hard_example_mining": {
                 "strategy": "weighted",
                 "class_weights": weights,
+                "original_images": len(self.fp_cases) + len(self.fn_cases) + len(self.small_cases),
             }
         }
 
         with open(config_path, 'w') as f:
-            yaml.dump(config, f)
+            yaml.dump(config, f, default_flow_style=False)
 
         return str(config_path)
+
+    def _generate_filter_list(self) -> str:
+        """生成难例列表 (filter 策略) - 用于人工审核"""
+        import json
+
+        output_dir = Path(self.config.output)
+        list_path = output_dir / "hard_examples_list.json"
+
+        hard_examples = []
+        for case in self.fp_cases + self.fn_cases + self.small_cases:
+            hard_examples.append({
+                "image_path": case.image_path,
+                "error_type": case.error_type,
+                "box": case.box,
+                "score": case.score,
+                "confidence": case.confidence,
+            })
+
+        result = {
+            "strategy": "filter",
+            "total_count": len(hard_examples),
+            "fp_count": len(self.fp_cases),
+            "fn_count": len(self.fn_cases),
+            "small_count": len(self.small_cases),
+            "hard_examples": hard_examples,
+        }
+
+        with open(list_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+
+        return str(list_path)
 
     def _generate_report(self) -> Dict[str, Any]:
         """生成难例分析报告"""
