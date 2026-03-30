@@ -1,0 +1,15 @@
+# configs/nodes/tta-inference.yaml
+name: "TTA 推理"
+tool: "tta-inference"
+params:
+  model: null                     # Pipeline 运行时注入
+  images: null                    # Pipeline 运行时注入
+  output: "./tta_results"         # 输出目录
+  scales: [0.8, 1.0, 1.2]        # 尺度列表
+  flip: true                      # 启用水平翻转
+  conf: 0.25                      # 置信度阈值
+  iou: 0.7                        # NMS IoU 阈值
+  wbf_iou: 0.5                    # WBF 融合 IoU 阈值
+  device: "${device}"             # 从 global_params 继承
+  save_vis: true                  # 保存可视化
+  save_txt: false                 # 保存 TXT

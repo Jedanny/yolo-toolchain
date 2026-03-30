@@ -1,0 +1,9 @@
+# configs/nodes/best-model-select.yaml
+name: "最佳模型选择"
+tool: "best-model-select"
+params:
+  model: null                    # Pipeline 运行时注入
+  data: null                     # Pipeline 运行时注入
+  metric: "fitness"              # 可选：fitness/mAP50/mAP50-95/recall/precision
+  output: null                   # 可选：输出路径
+  device: "${device}"            # 从 global_params 继承
