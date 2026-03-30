@@ -1599,6 +1599,69 @@ def tool_export(params: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+@register_tool("best-model-select")
+def tool_best_model_select(params: Dict[str, Any]) -> Dict[str, Any]:
+    """最佳模型选择"""
+    from .best_model_selector import BestModelSelector, BestModelSelectorConfig
+
+    model = params.get("model")
+    data = params.get("data")
+
+    if not model:
+        raise ValueError("Parameter 'model' is required for best-model-select")
+    if not data:
+        raise ValueError("Parameter 'data' is required for best-model-select")
+
+    config = BestModelSelectorConfig(
+        model=model,
+        data=data,
+        metric=params.get("metric", "fitness"),
+        output=params.get("output"),
+        device=str(params.get("device", "0")),
+    )
+
+    selector = BestModelSelector(config)
+    result = selector.select()
+
+    return result
+
+
+@register_tool("tta-inference")
+def tool_tta_inference(params: Dict[str, Any]) -> Dict[str, Any]:
+    """TTA 推理"""
+    from .tta_inference import TTAInference, TTAConfig
+
+    model = params.get("model")
+    images = params.get("images")
+
+    if not model:
+        raise ValueError("Parameter 'model' is required for tta-inference")
+    if not images:
+        raise ValueError("Parameter 'images' is required for tta-inference")
+
+    scales = params.get("scales", [0.8, 1.0, 1.2])
+    if isinstance(scales, str):
+        scales = [float(s) for s in scales.split()]
+
+    config = TTAConfig(
+        model=model,
+        images=images,
+        output_dir=params.get("output", "./tta_results"),
+        scales=scales,
+        flip=params.get("flip", True),
+        conf=params.get("conf", 0.25),
+        iou=params.get("iou", 0.7),
+        wbf_iou=params.get("wbf_iou", 0.5),
+        device=str(params.get("device", "cpu")),
+        save_vis=params.get("save_vis", True),
+        save_txt=params.get("save_txt", False),
+        save_conf=params.get("save_conf", True),
+    )
+
+    inference = TTAInference(config)
+    return inference.run()
+
+
 # =============================================================================
 # CLI Entry Point
 # =============================================================================
