@@ -1,0 +1,12 @@
+name: "难例挖掘"
+tool: "hard-example-mining"
+params:
+  model: null                    # Pipeline 运行时注入
+  data: null                     # Pipeline 运行时注入
+  output: null                   # 输出目录
+  strategy: "oversample"        # oversample / weighted / filter
+  iou_threshold: 0.5
+  conf_threshold: 0.25
+  small_area_threshold: 0.01
+  max_oversample: 5
+  device: "${device}"
