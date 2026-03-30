@@ -55,6 +55,41 @@ class TrainConfig:
     dropout: float = 0.0
     val: bool = True
     plots: bool = True
+    conf: float = 0.25  # 置信度阈值
+    iou: float = 0.7    # NMS IoU 阈值
+    anchors: float = 0.0  # 自定义 anchors (不为0时使用)
+
+    # 数据增强参数
+    hsv_h: float = 0.015  # 色调增强
+    hsv_s: float = 0.7    # 饱和度增强
+    hsv_v: float = 0.4    # 亮度增强
+    degrees: float = 0.0   # 随机旋转
+    translate: float = 0.1  # 随机平移
+    scale: float = 0.5     # 随机缩放
+    shear: float = 0.0     # 随机剪切
+    perspective: float = 0.0  # 随机透视变换
+    flipud: float = 0.0    # 上下翻转概率
+    fliplr: float = 0.5    # 左右翻转概率
+    mosaic: float = 1.0    # Mosaic 概率
+    mixup: float = 0.0     # MixUp 概率
+    copy_paste: float = 0.0  # Copy-paste 概率
+
+    # 类别不平衡处理
+    class_weights: List[float] = field(default_factory=list)  # 各类别权重，如 [1.0, 2.0]
+    cls_loss_gain: float = 0.0  # 分类损失增益 (手动调整用)
+    box_loss_gain: float = 0.0  # 边框损失增益
+    dfl_loss_gain: float = 0.0  # DFL 损失增益
+
+    # 正则化
+    label_smoothing: float = 0.0  # Label smoothing (0.0 = 无, 0.1 = 常用)
+
+    # EMA 指数移动平均
+    ema: float = 0.0  # EMA 衰减率 (0.0 = 禁用, 0.9999 = 常用)
+
+    # 梯度累积 - 模拟大 batch
+    # 当显存不足时，使用 smaller_batch * accumulate = effective_batch
+    # 例如: batch=4, accumulate=4 → effective_batch=16
+    accumulate: int = 1  # 梯度累积步数
 
 
 class Trainer:
@@ -163,6 +198,44 @@ class Trainer:
 
         if self.config.freeze:
             params['freeze'] = self.config.freeze
+
+        if self.config.conf > 0:
+            params['conf'] = self.config.conf
+
+        if self.config.iou > 0:
+            params['iou'] = self.config.iou
+
+        if self.config.anchors > 0:
+            params['anchors'] = self.config.anchors
+
+        # 数据增强参数
+        params['hsv_h'] = self.config.hsv_h
+        params['hsv_s'] = self.config.hsv_s
+        params['hsv_v'] = self.config.hsv_v
+        params['degrees'] = self.config.degrees
+        params['translate'] = self.config.translate
+        params['scale'] = self.config.scale
+        params['shear'] = self.config.shear
+        params['perspective'] = self.config.perspective
+        params['flipud'] = self.config.flipud
+        params['fliplr'] = self.config.fliplr
+        params['mosaic'] = self.config.mosaic
+        params['mixup'] = self.config.mixup
+        params['copy_paste'] = self.config.copy_paste
+
+        # 类别不平衡和损失权重
+        if self.config.class_weights:
+            params['class_weights'] = self.config.class_weights
+        if self.config.cls_loss_gain > 0:
+            params['cls_loss_gain'] = self.config.cls_loss_gain
+        if self.config.box_loss_gain > 0:
+            params['box_loss_gain'] = self.config.box_loss_gain
+        if self.config.dfl_loss_gain > 0:
+            params['dfl_loss_gain'] = self.config.dfl_loss_gain
+
+        # 正则化
+        if self.config.label_smoothing > 0:
+            params['label_smoothing'] = self.config.label_smoothing
 
         return params
 

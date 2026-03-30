@@ -267,9 +267,16 @@ class AnchorGenerator:
         if not train_dir.exists():
             raise FileNotFoundError(f"训练集目录不存在: {train_dir}")
 
+        # 查找标签目录 (YOLO 格式: labels/ 与 images/ 平级)
+        # 优先查找 labels/train，否则在 images/train 中查找
+        labels_dir = dataset_path / 'labels' / train_path.split('/')[-1]
+        if not labels_dir.exists():
+            # 兼容：标签可能直接在 images 目录下
+            labels_dir = train_dir
+
         # 解析所有标签文件
         all_bboxes = []
-        label_files = list(train_dir.glob('**/*.txt'))
+        label_files = list(labels_dir.glob('**/*.txt'))
 
         logger.info(f"找到 {len(label_files)} 个标签文件")
 
@@ -480,38 +487,34 @@ class AnchorGenerator:
             # 转换为列表格式 (每行一个 anchor: width height)
             anchors_dict[scale] = anchors[:, 2:].tolist()  # 只保存 width, height
 
-        # 构建输出数据
-        output_data = {
-            'anchors': anchors_dict,
-            'metadata': {
-                'n_bboxes': int(self.dataset_info.get('n_bboxes', 0)),
-                'n_images': int(self.dataset_info.get('n_images', 0)),
-                'best_k': {k: int(v) for k, v in self.dataset_info.get('best_k', {}).items()}
-            }
-        }
-
-        if self.config.output_format == 'yaml':
-            with open(output_path, 'w') as f:
-                yaml.dump(output_data, f, default_flow_style=False)
-        else:
-            # 简单文本格式
-            with open(output_path, 'w') as f:
-                for scale, scale_anchors in anchors_dict.items():
-                    f.write(f"# Scale {scale}\n")
-                    for anchor in scale_anchors:
-                        f.write(f"{anchor[0]:.6f} {anchor[1]:.6f}\n")
-
-        logger.info(f"Anchors 已保存到: {output_path}")
-
-        # 同时输出 YOLOv8 格式的 anchors (用于直接替换 yaml 文件)
-        yolov8_format = []
+        # 构建输出数据 - YOLO 格式 (absolute pixel values)
+        # YOLO expects: anchors: [[w1,h1,w2,h2,w3,h3], [w1,h1,w2,h2,w3,h3], [w1,h1,w2,h2,w3,h3]]
+        # Each sublist represents a scale (P3/P4/P5) with 3 anchors
+        yolo_anchors_format = []
         for scale in self.config.scales:
             if scale in self.anchors:
                 scale_anchors = self.anchors[scale]
+                # Flatten to [w1,h1,w2,h2,w3,h3] for this scale
+                flat_anchors = []
                 for anchor in scale_anchors:
-                    yolov8_format.extend([anchor[2], anchor[3]])
+                    flat_anchors.extend([anchor[2], anchor[3]])  # width, height (absolute)
+                yolo_anchors_format.append(flat_anchors)
 
-        logger.info(f"YOLOv8 格式 anchors: {yolov8_format}")
+        output_data = {
+            'anchors': yolo_anchors_format,
+            'metadata': {
+                'n_bboxes': int(self.dataset_info.get('n_bboxes', 0)),
+                'n_images': int(self.dataset_info.get('n_images', 0)),
+                'best_k': {k: int(v) for k, v in self.dataset_info.get('best_k', {}).items()},
+                'scales': self.config.scales
+            }
+        }
+
+        with open(output_path, 'w') as f:
+            yaml.dump(output_data, f, default_flow_style=False)
+
+        logger.info(f"Anchors 已保存到: {output_path}")
+        logger.info(f"YOLO 格式 anchors: {yolo_anchors_format}")
 
         return str(output_path)
 

@@ -69,3 +69,6 @@ data/
 # Environment (secrets)
 .env
 !.env.example
+
+# 缓存文件
+*.cache
