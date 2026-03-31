@@ -1,0 +1,121 @@
+# 抽烟检测模型微调 Pipeline
+# 基于已有模型继续训练，优化误报和漏报问题
+name: "抽烟检测微调"
+description: "基于已有抽烟检测模型进行微调，优化误报漏报"
+global_params:
+  device: "mps"           # M1 Max 使用 mps
+  imgsz: 640             # 图像尺寸
+  batch: 32               # batch 根据显存调整
+  project: "./pipeline_output"
+  conf: 0.25             # 置信度阈值
+  iou: 0.7               # NMS IoU 阈值
+
+stages:
+  # 阶段1: 数据校验 - 确保训练数据质量
+  - name: "数据校验"
+    tool: validate
+    params:
+      dataset: ./data/iia/annotated_test/dataset.yaml
+      verbose: false
+
+  # 阶段2: 标签质量检查 - 发现并修复误标漏标
+  - name: "标签QC"
+    tool: label-qc
+    params:
+      dataset: ./data/iia/annotated_test
+      apply_fixes: true
+      min_area: 100
+
+  # 阶段3: 锚框优化 - 如果数据有变化
+  - name: "锚框生成"
+    tool: anchors
+    params:
+      data: ./data/iia/annotated_test/dataset.yaml
+      n: 10
+      output: ./data/iia/annotated_test/anchors.yaml
+
+  # 阶段4: 模型微调 - 基于已有模型继续训练
+  - name: "微调训练"
+    tool: train
+    params:
+      # ========== 关键微调参数 ==========
+      model: ./pipeline_output/iia_best_practice/stage2_finetune/weights/best.pt  # 已有模型路径
+      data: ./data/iia/annotated_test/dataset.yaml
+
+      # 学习率 - 微调关键：使用较小学习率
+      lr0: 0.0001           # 初始学习率（远小于默认的0.01）
+      lrf: 0.01             # 最终学习率因子
+      cos_lr: true          # 余弦学习率调度
+
+      # 冻结策略 - 建议先冻结再解冻
+      freeze: [0,1,2,3,4,5,6,7,8,9]  # 冻结骨干网络
+
+      # 训练轮数 - 微调通常较少epoch
+      epochs: 200            # 微调不需要太多epoch
+      warmup_epochs: 3.0
+
+      # 优化器
+      optimizer: auto
+      weight_decay: 0.0005
+      momentum: 0.937
+
+      # 数据增强 - 针对抽烟场景优化
+      hsv_h: 0.015          # 色调
+      hsv_s: 0.7           # 饱和度
+      hsv_v: 0.4           # 亮度
+      degrees: 5.0          # 轻微旋转（抽烟手势多样）
+      translate: 0.1         # 平移
+      scale: 0.5            # 缩放
+      shear: 2.0            # 轻微剪切
+      perspective: 0.0
+      flipud: 0.0
+      fliplr: 0.5          # 左右翻转
+      mosaic: 1.0           # Mosaic增强
+      mixup: 0.15          # MixUp（不要太高，避免混淆）
+      copy_paste: 0.1       # Copy-paste增强
+
+      # 正则化
+      label_smoothing: 0.05  # 轻微标签平滑
+      dropout: 0.0
+
+      # EMA - 提升稳定性
+      ema: 0.9999
+
+      # 早停
+      patience: 20          # 20 epoch 无提升则停止
+
+      # 验证
+      val: true
+      plots: true
+
+      # 输出
+      name: iia_best_practice/stage2_finetune
+      exist_ok: true
+
+  # 阶段5: PR曲线分析 - 找最优阈值
+  - name: "阈值优化"
+    tool: pr-analyze
+    params:
+      model: ${project}/iia_best_practice/stage2_finetune/weights/best.pt
+      data: ./data/iia/annotated_test/dataset.yaml
+      conf_range: [0.1, 0.8, 0.05]
+
+  # 阶段6: 错误分析 - 分析误报漏报原因
+  - name: "错误分析"
+    tool: error-analyze
+    params:
+      model: ${project}/iia_best_practice/stage2_finetune/weights/best.pt
+      data: ./data/iia/annotated_test/dataset.yaml
+      conf: 0.25
+      iou: 0.7
+
+  # 阶段7: 推理验证 - 可视化检测效果
+  - name: "推理验证"
+    tool: verify-inference
+    params:
+      model: ${project}/iia_best_practice/stage2_finetune/weights/best.pt
+      images: ./data/iia/annotated_test/images/val  # 验证集图片
+      data: ./data/iia/annotated_test/dataset.yaml
+      conf: 0.25
+      iou: 0.7
+      output: ${project}/iia_best_practice/stage2_finetune/vis_results

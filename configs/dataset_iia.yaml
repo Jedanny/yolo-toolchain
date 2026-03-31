@@ -1,0 +1,11 @@
+path: /Users/suguiyang/development/yzwl/yolo-toolchain/data/iia
+train: images/train
+val: images/test
+test: images/test
+nc: 2
+names:
+  0: smoking
+  1: yellow_work_clothes
+class_descriptions:
+  0: smoking:Detect cigarettes, handheld cigarettes, cigarettes in mouth, burning smoke; does not include cigarette boxes or sticks
+  1: yellow_work_clothes:Detect workers or sanitation workers wearing yellow/orange work clothes

@@ -1,0 +1,33 @@
+name: 完整训练流程
+description: 从数据校验到模型导出的完整流程
+global_params:
+  device: '0'
+  imgsz: 640
+stages:
+- name: 数据校验
+  tool: validate
+  params:
+    fix: true
+    dataset: ./dataset
+- name: 标签质量检查
+  tool: label-qc
+  params:
+    auto_fix: true
+    dataset: ./dataset
+- name: 生成 Anchors
+  tool: anchors
+  params:
+    data: ./dataset.yaml
+    output_dir: ./anchors
+- name: 训练模型
+  tool: train
+  params:
+    data: ./dataset.yaml
+    epochs: 100
+    batch: 16
+    device: '0'
+- name: 导出模型
+  tool: export
+  params:
+    format: onnx
+    model: ${project}/train/weights/best.pt

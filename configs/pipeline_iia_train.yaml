@@ -1,0 +1,79 @@
+# IIA 抽烟检测两阶段微调流程
+name: "IIA 抽烟检测两阶段微调流程"
+description: "数据准备 -> 冻结 backbone 训练 -> 解冻微调 -> 导出模型"
+output_dir: ./pipeline_output
+
+# 全局默认参数，所有 stage 都会继承这些值
+# stage 可以覆盖这些值
+global_params:
+  device: "mps"
+  imgsz: 640
+  batch: 32
+  project: "./pipeline_output/train"
+  plots: true
+  conf: 0.25      # 置信度阈值
+  iou: 0.7        # NMS IoU 阈值
+
+stages:
+  # ========== 数据准备 ==========
+  - name: "数据校验"
+    tool: "validate"
+    params:
+      dataset: "./configs/dataset_iia.yaml"
+      project: "./pipeline_output/val"
+      name: "val"
+
+  - name: "标签质量检查"
+    tool: "label-qc"
+    params:
+      dataset: "./data/iia"
+      apply_fixes: false
+      duplicate_iou: 0.8
+      min_area: 100
+
+  - name: "生成 Anchors"
+    tool: "anchors"
+    params:
+      data: "./configs/dataset_iia.yaml"
+      output: "./configs/anchors_iia.yaml"
+
+  # ========== 阶段1: 冻结训练 ==========
+  # 使用预训练模型，冻结 backbone，仅训练检测头
+  - name: "冻结训练"
+    tool: "train"
+    params:
+      model: "./models/yolo11n.pt"
+      data: "./configs/dataset_iia.yaml"
+      epochs: 10
+      name: "stage1_frozen"
+      freeze: [0,1,2,3,4,5,6,7,8,9]
+      lr0: 0.001
+
+  # ========== 阶段2: 解冻微调 ==========
+  # 解冻所有层，使用小学习率精细调整
+  - name: "解冻微调"
+    tool: "train"
+    params:
+      model: "./pipeline_output/train/stage1_frozen/weights/best.pt"
+      data: "./configs/dataset_iia.yaml"
+      epochs: 10
+      name: "stage2_finetune"
+      freeze: []
+      lr0: 0.0001
+      cos_lr: true
+
+  # ========== 导出 ==========
+  - name: "导出 ONNX"
+    tool: "export"
+    params:
+      model: "./pipeline_output/train/stage2_finetune/weights/best.pt"
+      format: "onnx"
+      project: "./pipeline_output/export"
+      simplify: true
+
+  - name: "导出 CoreML"
+    tool: "export"
+    params:
+      model: "./pipeline_output/train/stage2_finetune/weights/best.pt"
+      format: "coreml"
+      project: "./pipeline_output/export"

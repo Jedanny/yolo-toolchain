@@ -1,0 +1,48 @@
+# YOLOv11 IIA 快速训练配置 (Mac M1 Max)
+# 简化版本，适合快速验证
+
+name: "IIA 快速训练"
+
+global_params:
+  device: "mps"
+  imgsz: 640
+  batch: 8
+  project: "./pipeline_output/iia_quick"
+  conf: 0.25
+  iou: 0.7
+
+stages:
+  - name: "训练"
+    tool: "train"
+    params:
+      model: "yolo11n.pt"
+      data: "./configs/dataset_iia.yaml"
+      epochs: 100
+      freeze: [0,1,2,3,4,5,6,7,8,9,10,11]
+      lr0: 0.001
+      optimizer: "AdamW"
+      warmup_epochs: 3
+      cos_lr: true
+      device: "mps"
+      project: "${project}"
+      name: "train"
+      plots: true
+      # 数据增强
+      hsv_h: 0.015
+      hsv_s: 0.7
+      hsv_v: 0.4
+      degrees: 5.0
+      translate: 0.1
+      scale: 0.5
+      fliplr: 0.5
+      mosaic: 1.0
+      mixup: 0.1
+      # 正则化
+      label_smoothing: 0.1
+
+  - name: "导出"
+    tool: "export"
+    params:
+      model: "${project}/train/weights/best.pt"
+      format: "onnx"
+      imgsz: 640

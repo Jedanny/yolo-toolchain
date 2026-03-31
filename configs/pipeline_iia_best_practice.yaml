@@ -1,0 +1,132 @@
+name: IIA 最佳实践训练流程
+global_params:
+  device: mps
+  imgsz: 640
+  batch: 32
+  project: ./pipeline_output/iia_best_practice
+  conf: 0.25
+  iou: 0.7
+stages:
+- name: 1. 数据集校验
+  tool: validate
+  params:
+    dataset: ./configs/dataset_iia.yaml
+    model: yolo11n.pt
+- name: 2. 标签质量检查
+  tool: label-qc
+  params:
+    dataset: ./data/iia
+    auto_fix: true
+- name: 3. 生成 Anchors
+  tool: anchors
+  params:
+    data: ./configs/dataset_iia.yaml
+    output_dir: ${project}/anchors
+    validate: true
+- name: 4.1 冻结骨干网络训练
+  tool: train
+  params:
+    model: yolo11n.pt
+    data: ./configs/dataset_iia.yaml
+    epochs: 30
+    freeze:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    lr0: 0.001
+    optimizer: AdamW
+    warmup_epochs: 3
+    cos_lr: false
+    device: mps
+    project: ${project}
+    name: stage1_freeze
+    exist_ok: true
+    plots: true
+    save: true
+    save_period: 10
+    hsv_h: 0.015
+    hsv_s: 0.7
+    hsv_v: 0.4
+    degrees: 5.0
+    translate: 0.1
+    scale: 0.5
+    shear: 2.0
+    perspective: 0.0
+    flipud: 0.0
+    fliplr: 0.5
+    mosaic: 1.0
+    mixup: 0.1
+    copy_paste: 0.0
+    label_smoothing: 0.1
+- name: 4.2 解冻全量微调
+  tool: train
+  params:
+    model: ${project}/stage1_freeze/weights/best.pt
+    data: ./configs/dataset_iia.yaml
+    epochs: 150
+    freeze: []
+    lr0: 0.0001
+    lrf: 0.01
+    optimizer: AdamW
+    warmup_epochs: 3
+    cos_lr: true
+    device: mps
+    project: ${project}
+    name: stage2_finetune
+    exist_ok: true
+    plots: true
+    save: true
+    save_period: 10
+    hsv_h: 0.015
+    hsv_s: 0.7
+    hsv_v: 0.4
+    degrees: 3.0
+    translate: 0.1
+    scale: 0.3
+    shear: 1.0
+    perspective: 0.0
+    flipud: 0.0
+    fliplr: 0.5
+    mosaic: 1.0
+    mixup: 0.15
+    copy_paste: 0.0
+    label_smoothing: 0.05
+- name: 5. PR曲线分析 (找最优阈值)
+  tool: pr-analyze
+  params:
+    model: ${project}/stage2_finetune/weights/best.pt
+    data: ./configs/dataset_iia.yaml
+    output_dir: ${project}/pr_analysis
+    iou_threshold: 0.5
+    num_thresholds: 100
+    device: mps
+- name: 6. 推理验证
+  tool: verify-inference
+  params:
+    model: ${project}/stage2_finetune/weights/best.pt
+    images: ./data/iia/images/test
+    data: ./configs/dataset_iia.yaml
+    conf: 0.25
+    iou: 0.5
+    device: mps
+    output_dir: ${project}/inference_results
+    save_txt: true
+    save_conf: true
+- name: 7. 导出 ONNX
+  tool: export
+  params:
+    model: ${project}/stage2_finetune/weights/best.pt
+    format: onnx
+    imgsz: 640
+    half: false
+    device: cpu
+    output_dir: ${project}/export

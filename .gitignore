@@ -72,3 +72,8 @@ data/
 
 # 缓存文件
 *.cache
+
+# docs 
+docs/
+
+pipeline_output/

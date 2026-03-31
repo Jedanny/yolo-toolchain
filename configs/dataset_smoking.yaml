@@ -1,0 +1,15 @@
+# YOLO Dataset 配置文件示例
+# 路径相对于此配置文件
+
+path: ./data/smoking
+train: images/train
+val: images/val
+test: images/test
+
+# 类别数量
+nc: 2
+
+# 类别名称
+names:
+  0: person
+  1: cigarette

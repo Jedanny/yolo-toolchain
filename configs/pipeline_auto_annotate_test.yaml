@@ -1,0 +1,13 @@
+name: IIA 测试集自动标注
+description: 对测试集图片进行 AI 自动标注，检测香烟和穿黄色衣服的人
+stages:
+- name: 自动标注
+  tool: auto-annotate
+  params:
+    images: ./data/images/train
+    output: ./data/iia/annotated_test
+    dataset: ./configs/dataset_iia.yaml
+    conf: 0.25
+    workers: 10
+    seed: 42
+    save_vis: true

@@ -1,0 +1,38 @@
+name: 抽烟检测训练流程
+description: 从数据准备到模型导出的完整抽烟检测训练流程
+defaults:
+  device: '0'
+  imgsz: 640
+stages:
+- name: 下载预训练模型
+  tool: download
+  params:
+    model: yolo11n.pt
+    output: ./models
+- name: 数据校验
+  tool: validate
+  params:
+    fix: true
+    dataset: ./data/smoking
+- name: 标签质量检查
+  tool: label-qc
+  params:
+    auto_fix: true
+    dataset: ./data/smoking
+- name: 生成 Anchors
+  tool: anchors
+  params:
+    data: ./configs/dataset_smoking.yaml
+    output: ./anchors.yaml
+- name: 冻结训练
+  tool: freeze-train
+  params:
+    data: ./data/smoking.yaml
+    model: ./models/yolo11n.pt
+    epochs: 100
+    device: '0'
+- name: 导出 ONNX
+  tool: export
+  params:
+    format: onnx
+    model: ${project}/train/weights/best.pt

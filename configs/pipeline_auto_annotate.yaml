@@ -1,0 +1,27 @@
+# 自动标注流程配置
+name: "自动标注流程"
+description: "使用 AI 模型自动标注图片"
+
+defaults:
+  workers: 10
+  conf: 0.3
+  seed: 42
+
+stages:
+  - name: "自动标注"
+    tool: "auto-annotate"
+    params:
+      images: "./raw_images"
+      output: "./dataset"
+      dataset: "./dataset.yaml"
+      classes: ["person", "cigarette"]
+      workers: 10
+      conf: 0.3
+      seed: 42
+
+  - name: "标注核验"
+    tool: "verify"
+    params:
+      images: "./raw_images"
+      labels: "./dataset/labels"
+      classes: ["person", "cigarette"]

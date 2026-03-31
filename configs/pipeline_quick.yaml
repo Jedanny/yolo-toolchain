@@ -1,0 +1,14 @@
+name: 快速验证
+description: 最小化流程，仅验证数据和训练
+stages:
+- name: 数据校验
+  tool: validate
+  params:
+    fix: false
+    dataset: ./dataset
+- name: 训练模型
+  tool: train
+  params:
+    data: ./dataset.yaml
+    epochs: 50
+    device: '0'

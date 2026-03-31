@@ -1,0 +1,26 @@
+# 抽烟检测自动标注流程
+name: "抽烟检测自动标注流程"
+description: "使用 AI 自动标注室内施工工地抽烟图片"
+
+defaults:
+  conf: 0.3
+  workers: 10
+  seed: 42
+
+stages:
+  - name: "自动标注"
+    tool: "auto-annotate"
+    params:
+      images: "./raw_images"
+      output: "./dataset"
+      classes: ["smoking"]
+      conf: 0.3
+      workers: 10
+      seed: 42
+
+  - name: "人工核验"
+    tool: "verify"
+    params:
+      images: "./raw_images"
+      labels: "./dataset/labels"
+      classes: ["smoking"]
